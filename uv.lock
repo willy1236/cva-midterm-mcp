@@ -226,12 +226,14 @@ source = { virtual = "." }
 dependencies = [
     { name = "fastmcp" },
     { name = "openai" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = ">=3.2.4" },
     { name = "openai", specifier = ">=1.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
 ]
 
 [[package]]
