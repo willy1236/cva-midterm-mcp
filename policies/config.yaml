@@ -11,7 +11,6 @@ contexts:
     tool_scope:
       allowed:
         - "get_weather"
-        - "get_agent_profile"
         - "fetch_constraint_config"
       mode: "read-only"
   esg:
@@ -36,6 +35,5 @@ contexts:
     tool_scope:
       allowed:
         - "get_weather"
-        - "get_agent_profile"
         - "fetch_constraint_config"
       mode: "read-only"
