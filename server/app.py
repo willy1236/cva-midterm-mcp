@@ -6,10 +6,10 @@ from typing import Any
 from fastmcp import FastMCP
 
 from audits.governance_logger import AuditAction, AuditEntry, GovernanceLogger
-from policies.config_loader import get_context_profile, load_constraint_config
+from policies.config_loader import get_context_profile
 from server.response import ErrorCode, ErrorResponse, SuccessResponse, build_error, build_success
-from validators.output_validator import SchemaType, validate_output_structure
-from validators.tool_gatekeeper import ToolAccessDeniedError, secure_tool_call
+from validators.output_validator import validate_output_structure
+from validators.tool_gatekeeper import secure_tool_call
 
 mcp = FastMCP("Trust Constraint MCP Server")
 governance_logger = GovernanceLogger(log_file=Path("audits/logs/governance_audit.jsonl"))
@@ -39,21 +39,6 @@ def get_agent_profile(context_id: str = "") -> str:
             message="failed to load profile",
             detail=str(exc),
         ).model_dump_json()
-
-
-@mcp.tool()
-def fetch_constraint_config() -> SuccessResponse[dict[str, Any]] | ErrorResponse:
-    """Return full policy config to ensure all agents share one rule source."""
-    try:
-        config = load_constraint_config()
-        return build_success(data=config)
-    except Exception as exc:  # pragma: no cover - defensive fallback
-        return build_error(
-            code=ErrorCode.INTERNAL_ERROR,
-            message="failed to load constraint config",
-            detail=str(exc),
-        )
-
 
 @mcp.tool()
 def secure_tool_call_endpoint(tool_name: str, context_id: str = "general", arguments: dict[str, Any] | None = None) -> SuccessResponse[dict[str, Any]] | ErrorResponse:

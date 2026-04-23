@@ -11,7 +11,6 @@ contexts:
     tool_scope:
       allowed:
         - "get_weather"
-        - "fetch_constraint_config"
       mode: "read-only"
   esg:
     identity: "ESG Auditor"
@@ -23,7 +22,6 @@ contexts:
     tool_scope:
       allowed:
         - "get_agent_profile"
-        - "fetch_constraint_config"
       mode: "read-only"
   code_dev:
     identity: "Senior Python Developer"
@@ -34,5 +32,4 @@ contexts:
       - "變更需說明風險與限制。"
     tool_scope:
       allowed:
-        - "fetch_constraint_config"
       mode: "read-only"

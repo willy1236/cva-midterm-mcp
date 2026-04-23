@@ -46,13 +46,7 @@ def demo_tool_gatekeeper() -> None:
             "context_id": "general",
             "arguments": {"delete_field": "user_data"},
             "description": "✗ 拒絕：讀寫約束檢測到 delete 操作",
-        },
-        {
-            "tool_name": "fetch_constraint_config",
-            "context_id": "esg",
-            "arguments": None,
-            "description": "✓ 允許：esg context 可以調用 fetch_constraint_config",
-        },
+        }
     ]
 
     for case in test_cases:
@@ -97,7 +91,7 @@ def demo_output_validator() -> None:
     data_agent = {
         "content": "根據天氣資料，今天陽光充足。",
         "context_id": "general",
-        "available_tools": ["get_weather", "fetch_constraint_config"],
+        "available_tools": ["get_weather"],
     }
     valid, errors = validate_output_structure(data=data_agent, schema_type=SchemaType.AGENT_RESPONSE)
     print(f"✓ 有效: {valid}")
