@@ -37,11 +37,11 @@ async def run_test_client() -> None:
         print("Available tools:", [tool.name for tool in tools])
 
         weather = await client.call_tool("get_weather", {"city": "Taipei"})
-        profile = await client.call_tool("get_agent_profile", {"context_id": "esg"})
+        profile = await client.read_resource("resource://profile/esg")
         config = await client.call_tool("fetch_constraint_config", {})
 
         pretty_print_result("get_weather", serialize_result(weather))
-        pretty_print_result("get_agent_profile", serialize_result(profile))
+        pretty_print_result("get_agent_profile", profile)
         pretty_print_result("fetch_constraint_config", serialize_result(config))
 
 

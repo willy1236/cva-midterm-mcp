@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 from fastmcp import Client
-from mcp.types import CallToolResult, Tool
+from mcp.types import CallToolResult, TextResourceContents, Tool
 from openai import OpenAI
 from openai.types.chat.chat_completion import ChatCompletion
 
@@ -105,17 +105,44 @@ def format_tool_result(result: CallToolResult) -> str:
     return str(result)
 
 
+def parse_resource_json(contents: list[TextResourceContents]) -> dict[str, Any]:
+    if not contents:
+        raise RuntimeError("MCP resource returned no contents")
+
+    text = contents[0].text
+    if not text:
+        raise RuntimeError("MCP resource returned empty text")
+
+    payload = json.loads(text)
+    if not isinstance(payload, dict):
+        raise RuntimeError("MCP resource payload must be a JSON object")
+
+    return payload
+
+
 async def run_agent_loop() -> None:
     async with Client(MCP_SERVER_URL) as mcp_client:
         llm_client = create_openai_client()
         mcp_tools = await mcp_client.list_tools()
         openai_tools = mcp_tools_to_openai_tools(mcp_tools)
 
+        profile_contents = await mcp_client.read_resource("resource://profile/general")
+        profile_payload = parse_resource_json(profile_contents)
+        profile_data = profile_payload.get("data")
+
         print(f"已連線 MCP: {MCP_SERVER_URL}")
         print("可用工具:", [t.name for t in mcp_tools])
+        if isinstance(profile_data, dict):
+            print("已載入代理設定:", profile_data.get("context_id", ""), profile_data.get("identity", ""))
         print("開始互動（輸入 exit 離開）")
 
-        messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        system_prompt = SYSTEM_PROMPT
+        if isinstance(profile_data, dict):
+            profile_system_prompt = profile_data.get("system_prompt", "").strip()
+            if profile_system_prompt:
+                system_prompt = f"{SYSTEM_PROMPT}\n\n{profile_system_prompt}"
+
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
 
         while True:
             user_input = (await asyncio.to_thread(input, "\n你: ")).strip()
