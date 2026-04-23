@@ -37,7 +37,7 @@ MCP_PATH = os.getenv("MCP_PATH", "/mcp")
 HOST_SERVER_BIND = os.getenv("HOST_SERVER_BIND", "127.0.0.1")
 HOST_SERVER_PORT = int(os.getenv("HOST_SERVER_PORT", "8010"))
 SESSION_FILE = Path(os.getenv("HOST_SESSION_FILE", "host_sessions.json"))
-AUDIT_LOG_FILE = Path(os.getenv("GOVERNANCE_AUDIT_FILE", "audits/logs/governance_audit.jsonl"))
+AUDIT_LOG_FILE = Path(os.getenv("GOVERNANCE_AUDIT_FILE", "logs/governance_audit.jsonl"))
 
 SYSTEM_PROMPT = "你是一個可呼叫工具的 AI 助手。當你需要外部資料時，請優先呼叫可用工具，不要猜測。回覆使用繁體中文，且簡潔清楚。"
 
@@ -411,7 +411,7 @@ class ChatRequest(BaseModel):
 class AppState:
     def __init__(self) -> None:
         self.store = SessionStore(SESSION_FILE)
-        self.llm_client = create_openai_client()
+        self.llm_client: OpenAI | None = None
         self.server_process: mp.Process | None = None
 
 
@@ -482,6 +482,12 @@ async def chat(payload: ChatRequest) -> dict[str, Any]:
     session = state.store.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
+
+    if state.llm_client is None:
+        try:
+            state.llm_client = create_openai_client()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
 
     try:
         result = await run_single_turn(
