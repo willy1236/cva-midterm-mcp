@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 DEFAULT_BASE_URL = os.getenv("HOST_SERVER_URL", "http://127.0.0.1:8010")
+DEFAULT_CHAT_TIMEOUT = float(os.getenv("HOST_CHAT_TIMEOUT", "300"))
 
 
 @dataclass
@@ -128,10 +129,13 @@ def cmd_chat(state: ClientState) -> None:
         method="POST",
         path="/chat",
         payload={"session_id": state.session_id, "message": message},
-        timeout=60.0,
+        timeout=DEFAULT_CHAT_TIMEOUT,
     )
     print(f"HTTP {status}")
     print_json("chat", data)
+
+    if status == 0 and isinstance(data.get("error"), str) and "timed out" in data["error"].lower():
+        print("提示：/chat 已超過目前的等待時間，但伺服器可能仍在處理該輪對話。可將 HOST_CHAT_TIMEOUT 調大後再試。")
 
     result = data.get("data") if isinstance(data.get("data"), dict) else None
     if result:

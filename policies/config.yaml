@@ -34,6 +34,5 @@ contexts:
       - "變更需說明風險與限制。"
     tool_scope:
       allowed:
-        - "get_weather"
         - "fetch_constraint_config"
       mode: "read-only"

@@ -10,3 +10,4 @@ wheels/
 .venv
 .env
 host_sessions.json
+governance_audit.jsonl
