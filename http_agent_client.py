@@ -133,7 +133,7 @@ async def run_agent_loop() -> None:
         print(f"已連線 MCP: {MCP_SERVER_URL}")
         print("可用工具:", [t.name for t in mcp_tools])
         if isinstance(profile_data, dict):
-            print("已載入代理設定:", profile_data.get("context_id", ""), profile_data.get("identity", ""))
+            print(f"已載入代理設定: {profile_data.get('identity', '')} ({profile_data.get('context_id', '')})")
         print("開始互動（輸入 exit 離開）")
 
         system_prompt = SYSTEM_PROMPT
