@@ -203,7 +203,6 @@ def run_cli() -> int:
 
     print("Host server 可互動測試工具")
     print(f"預設 base_url: {state.base_url}")
-    print("建議順序: 1 -> 2 -> 4 -> 5")
 
     actions = {
         "1": cmd_health,

@@ -21,7 +21,6 @@ contexts:
       - "禁止提供投資建議。"
     tool_scope:
       allowed:
-        - "get_agent_profile"
       mode: "read-only"
   code_dev:
     identity: "Senior Python Developer"
