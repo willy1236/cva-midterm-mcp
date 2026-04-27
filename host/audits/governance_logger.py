@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 
-class AuditAction(str, Enum):
+class AuditAction(StrEnum):
     TOOL_CALL_ALLOWED = "TOOL_CALL_ALLOWED"
     TOOL_CALL_REJECTED = "TOOL_CALL_REJECTED"
     OUTPUT_VALIDATION_PASS = "OUTPUT_VALIDATION_PASS"
