@@ -1,6 +1,5 @@
 # cva-midterm-mcp
 
-## 專案簡介 (Project Description)
 `cva-midterm-mcp` 是一個整合主機端（Host）、客戶端（Client）與模型上下文協議伺服器（Model Context Protocol Server, MCP Server）的系統。本專案透過 OpenAI 套件提供對話服務，並內建工具治理（Tool Governance）、輸出驗證（Output Validation）及資源熔斷機制（Resource Circuit Breaker），確保AI系統運行的安全性與穩定性。
 
 ## 核心功能 (Core Features)
