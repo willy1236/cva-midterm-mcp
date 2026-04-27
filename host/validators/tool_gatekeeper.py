@@ -41,7 +41,7 @@ def secure_tool_call(
         return False, f"Unknown context_id: {context_id}"
 
     tool_scope = profile.get("tool_scope", {})
-    allowed_tools = tool_scope.get("allowed", [])
+    allowed_tools = tool_scope.get("allowed") or []
     mode = tool_scope.get("mode", "read-only")
 
     if tool_name not in allowed_tools:
