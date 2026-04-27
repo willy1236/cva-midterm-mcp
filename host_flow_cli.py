@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -187,14 +186,14 @@ def cmd_show_state(state: ClientState) -> None:
 
 def print_menu() -> None:
     print("\n=== Host Flow CLI ===")
-    print("1) health")
-    print("2) session/start")
-    print("3) session/context")
-    print("4) chat")
-    print("5) session/{id}")
-    print("6) show local state")
-    print("7) set session_id")
-    print("8) set base_url")
+    print("1) health 檢查伺服器狀態")
+    print("2) session/start 建立新 session")
+    print("3) session/context 切換 context")
+    print("4) chat 發送訊息")
+    print("5) session/{id} 獲取 session 資訊")
+    print("6) 顯示本地狀態")
+    print("7) 設定 session_id")
+    print("8) 設定 base_url")
     print("9) quit")
 
 
