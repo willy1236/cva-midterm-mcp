@@ -30,7 +30,7 @@ python main.py
 ```
 
 ## 專案架構 (Project Structure)
-詳細功能：[點我](docs\CURRENT_IMPLEMENTED_FEATURES.md)
+詳細功能：[點我](/docs/CURRENT_IMPLEMENTED_FEATURES.md)
 
 host/：處理伺服器 HTTP API、會話狀態（Session State）、策略載入（Policy Loading）與各種驗證器（Validators）。
 
