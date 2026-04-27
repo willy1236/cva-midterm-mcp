@@ -61,7 +61,7 @@ def main() -> int:
     try:
         wait_http_ready(f"{host_server_url}/health", timeout_sec=30.0)
 
-        from host_flow_cli import run_cli
+        from client.cli import run_cli
 
         return run_cli()
     finally:

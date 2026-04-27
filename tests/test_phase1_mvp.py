@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from host.audits.governance_logger import AuditAction, AuditEntry, GovernanceLogger
-from mcpServer.app import mcp
 from host.validators.output_validator import SchemaType, validate_output_structure
 from host.validators.tool_gatekeeper import secure_tool_call
+from mcpServer.app import mcp
 
 
 class TestToolGatekeeper:
