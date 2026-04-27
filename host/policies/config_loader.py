@@ -34,11 +34,22 @@ def get_context_profile(context_id: str) -> dict[str, Any]:
     if not isinstance(profile, dict):
         raise KeyError(f"Unknown context_id: {selected}")
 
+    global_resource_limits = config.get("resource_limits", {})
+    if not isinstance(global_resource_limits, dict):
+        global_resource_limits = {}
+
+    context_resource_limits = profile.get("resource_limits", {})
+    if not isinstance(context_resource_limits, dict):
+        context_resource_limits = {}
+
+    resource_limits = {**global_resource_limits, **context_resource_limits}
+
     return {
         "context_id": selected,
         "identity": profile.get("identity", "Unknown"),
         "system_prompt": profile.get("system_prompt", ""),
         "absolute_rules": profile.get("absolute_rules", []),
         "tool_scope": profile.get("tool_scope", {}),
+        "resource_limits": resource_limits,
         "policy_version": config.get("version", "unknown"),
     }

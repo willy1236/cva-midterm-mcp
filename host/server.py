@@ -22,6 +22,11 @@ from host.audits.governance_logger import AuditAction, AuditEntry, GovernanceLog
 from host.policies.config_loader import get_context_profile
 from host.session import ChatRequest, SessionContextRequest, SessionStartRequest, SessionStore
 from host.validators.output_validator import SchemaType, validate_output_structure
+from host.validators.resource_circuit_breaker import (
+    ResourceCircuitBreaker,
+    ResourceLimitExceeded,
+    build_resource_budget,
+)
 from host.validators.tool_gatekeeper import secure_tool_call
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
@@ -191,6 +196,9 @@ async def run_single_turn(
             if profile_system_prompt:
                 system_prompt = f"{SYSTEM_PROMPT}\n\n{profile_system_prompt}"
 
+        resource_budget = build_resource_budget(profile_data if isinstance(profile_data, dict) else None)
+        circuit_breaker = ResourceCircuitBreaker(resource_budget)
+
         history = session_record.get("messages", [])
         conversation: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         if isinstance(history, list):
@@ -199,168 +207,198 @@ async def run_single_turn(
         # 4) 先加入本輪使用者訊息，再進入模型與工具循環。
         conversation.append({"role": "user", "content": user_message})
 
-        while True:
-            response = call_openai_chat(llm_client, conversation, openai_tools)
-            message = response.choices[0].message
-            tool_calls = message.tool_calls or []
-            content = message.content
+        try:
+            while True:
+                circuit_breaker.check()
 
-            if tool_calls:
-                # 5) 先把模型的工具調用意圖寫入對話，再開始執行工具。
-                serialized_tool_calls = [
-                    {
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call.function.name,
-                            "arguments": tool_call.function.arguments or "{}",
-                        },
-                    }
-                    for tool_call in tool_calls
-                ]
+                response = call_openai_chat(llm_client, conversation, openai_tools)
+                usage = getattr(response, "usage", None)
+                total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
+                circuit_breaker.record_model_response(total_tokens=total_tokens)
+                circuit_breaker.check()
 
-                conversation.append(
-                    {
-                        "role": "assistant",
-                        "content": content or "",
-                        "tool_calls": serialized_tool_calls,
-                    }
-                )
+                message = response.choices[0].message
+                tool_calls = message.tool_calls or []
+                content = message.content
 
-                for tool_call in tool_calls:
-                    # 6) 安全解析模型輸出的工具參數。
-                    tool_name = tool_call.function.name
-                    raw_args = tool_call.function.arguments or "{}"
-                    try:
-                        arguments = json.loads(raw_args) if raw_args else {}
-                    except json.JSONDecodeError:
-                        arguments = {}
-
-                    # 7) 工具調用前先做治理檢查，不合規即阻擋。
-                    allowed, reason = secure_tool_call(
-                        tool_name=tool_name,
-                        arguments=arguments,
-                        context_id=context_id,
-                    )
-                    # 8) 不論允許與否都記錄審計日誌，包含工具名稱、參數、上下文識別、決策結果與理由等。
-                    audit_trace_id = str(uuid4())
-                    governance_logger.log(
-                        AuditEntry(
-                            trace_id=audit_trace_id,
-                            action=(AuditAction.TOOL_CALL_ALLOWED if allowed else AuditAction.TOOL_CALL_REJECTED),
-                            timestamp=datetime.now(UTC).isoformat(),
-                            context_id=context_id,
-                            tool_name=tool_name,
-                            reason=reason,
-                            details={"arguments": arguments},
-                        )
-                    )
-
-                    if not allowed:
-                        # 回填政策違規訊息為工具回應，讓模型可安全續跑。
-                        policy_message = json.dumps(
-                            {
-                                "error": "policy_violation",
-                                "reason": reason,
-                                "trace_id": audit_trace_id,
+                if tool_calls:
+                    # 5) 先把模型的工具調用意圖寫入對話，再開始執行工具。
+                    serialized_tool_calls = [
+                        {
+                            "id": tool_call.id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_call.function.name,
+                                "arguments": tool_call.function.arguments or "{}",
                             },
-                            ensure_ascii=False,
-                        )
-                        conversation.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "name": tool_name,
-                                "content": policy_message,
-                            }
-                        )
-                        continue
-
-                    # 9) 僅在通過授權後才執行 MCP 工具。
-                    mcp_result = await mcp_client.call_tool(tool_name, arguments)
-                    tool_text = format_tool_result(mcp_result, tool_call_id=tool_call.id)
-
-                    # 10) 工具執行後進行輸出結構驗證。
-                    output_ok, output_errors = validate_output_structure(
-                        data={
-                            "tool_name": tool_name,
-                            "status": "success",
-                            "output": tool_text,
-                        },
-                        schema_type=SchemaType.TOOL_RESULT,
-                    )
-                    # 11) 同樣記錄審計日誌，包含驗證結果與錯誤訊息等。
-                    governance_logger.log(
-                        AuditEntry(
-                            trace_id=str(uuid4()),
-                            action=(AuditAction.OUTPUT_VALIDATION_PASS if output_ok else AuditAction.OUTPUT_VALIDATION_FAIL),
-                            timestamp=datetime.now(UTC).isoformat(),
-                            context_id=context_id,
-                            tool_name=tool_name,
-                            reason=("output validation passed" if output_ok else "; ".join(output_errors)),
-                            details={"schema_type": SchemaType.TOOL_RESULT.value},
-                        )
-                    )
-
-                    if not output_ok:
-                        # 若驗證失敗，回填錯誤訊息而非使用無效原始輸出。
-                        validation_message = json.dumps(
-                            {
-                                "error": "output_validation_failed",
-                                "details": output_errors,
-                            },
-                            ensure_ascii=False,
-                        )
-                        conversation.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "name": tool_name,
-                                "content": validation_message,
-                            }
-                        )
-                        continue
+                        }
+                        for tool_call in tool_calls
+                    ]
 
                     conversation.append(
                         {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "name": tool_name,
-                            "content": tool_text,
+                            "role": "assistant",
+                            "content": content or "",
+                            "tool_calls": serialized_tool_calls,
                         }
                     )
-                continue
 
-            # 12) 無需再調用工具時，將最終內容解析成結構化回覆並結束。
-            structured_response = parse_structured_assistant_output(content or "")
-            final_text = structured_response.get("answer", "") or "（模型沒有回傳文字內容）"
-            structured_sources = structured_response.get("sources", [])
-            if not isinstance(structured_sources, list):
-                structured_sources = []
+                    for tool_call in tool_calls:
+                        # 6) 安全解析模型輸出的工具參數。
+                        tool_name = tool_call.function.name
+                        circuit_breaker.record_tool_call(tool_name=tool_name)
+                        circuit_breaker.check()
 
-            output_ok, output_errors = validate_output_structure(
-                data={
-                    "answer": final_text,
-                    "sources": structured_sources,
-                    "context_id": context_id,
-                    "available_tools": [tool.name for tool in mcp_tools],
-                },
-                schema_type=SchemaType.AGENT_RESPONSE,
-            )
+                        raw_args = tool_call.function.arguments or "{}"
+                        try:
+                            arguments = json.loads(raw_args) if raw_args else {}
+                        except json.JSONDecodeError:
+                            arguments = {}
+
+                        # 7) 工具調用前先做治理檢查，不合規即阻擋。
+                        allowed, reason = secure_tool_call(
+                            tool_name=tool_name,
+                            arguments=arguments,
+                            context_id=context_id,
+                        )
+                        # 8) 不論允許與否都記錄審計日誌，包含工具名稱、參數、上下文識別、決策結果與理由等。
+                        audit_trace_id = str(uuid4())
+                        governance_logger.log(
+                            AuditEntry(
+                                trace_id=audit_trace_id,
+                                action=(AuditAction.TOOL_CALL_ALLOWED if allowed else AuditAction.TOOL_CALL_REJECTED),
+                                timestamp=datetime.now(UTC).isoformat(),
+                                context_id=context_id,
+                                tool_name=tool_name,
+                                reason=reason,
+                                details={"arguments": arguments},
+                            )
+                        )
+
+                        if not allowed:
+                            # 回填政策違規訊息為工具回應，讓模型可安全續跑。
+                            policy_message = json.dumps(
+                                {
+                                    "error": "policy_violation",
+                                    "reason": reason,
+                                    "trace_id": audit_trace_id,
+                                },
+                                ensure_ascii=False,
+                            )
+                            conversation.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tool_call.id,
+                                    "name": tool_name,
+                                    "content": policy_message,
+                                }
+                            )
+                            continue
+
+                        # 9) 僅在通過授權後才執行 MCP 工具。
+                        mcp_result = await mcp_client.call_tool(tool_name, arguments)
+                        tool_text = format_tool_result(mcp_result, tool_call_id=tool_call.id)
+
+                        # 10) 工具執行後進行輸出結構驗證。
+                        output_ok, output_errors = validate_output_structure(
+                            data={
+                                "tool_name": tool_name,
+                                "status": "success",
+                                "output": tool_text,
+                            },
+                            schema_type=SchemaType.TOOL_RESULT,
+                        )
+                        # 11) 同樣記錄審計日誌，包含驗證結果與錯誤訊息等。
+                        governance_logger.log(
+                            AuditEntry(
+                                trace_id=str(uuid4()),
+                                action=(AuditAction.OUTPUT_VALIDATION_PASS if output_ok else AuditAction.OUTPUT_VALIDATION_FAIL),
+                                timestamp=datetime.now(UTC).isoformat(),
+                                context_id=context_id,
+                                tool_name=tool_name,
+                                reason=("output validation passed" if output_ok else "; ".join(output_errors)),
+                                details={"schema_type": SchemaType.TOOL_RESULT.value},
+                            )
+                        )
+
+                        if not output_ok:
+                            # 若驗證失敗，回填錯誤訊息而非使用無效原始輸出。
+                            validation_message = json.dumps(
+                                {
+                                    "error": "output_validation_failed",
+                                    "details": output_errors,
+                                },
+                                ensure_ascii=False,
+                            )
+                            conversation.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tool_call.id,
+                                    "name": tool_name,
+                                    "content": validation_message,
+                                }
+                            )
+                            continue
+
+                        conversation.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "name": tool_name,
+                                "content": tool_text,
+                            }
+                        )
+                    continue
+
+                # 12) 無需再調用工具時，將最終內容解析成結構化回覆並結束。
+                structured_response = parse_structured_assistant_output(content or "")
+                final_text = structured_response.get("answer", "") or "（模型沒有回傳文字內容）"
+                structured_sources = structured_response.get("sources", [])
+                if not isinstance(structured_sources, list):
+                    structured_sources = []
+
+                output_ok, output_errors = validate_output_structure(
+                    data={
+                        "answer": final_text,
+                        "sources": structured_sources,
+                        "context_id": context_id,
+                        "available_tools": [tool.name for tool in mcp_tools],
+                    },
+                    schema_type=SchemaType.AGENT_RESPONSE,
+                )
+                governance_logger.log(
+                    AuditEntry(
+                        trace_id=str(uuid4()),
+                        action=(AuditAction.OUTPUT_VALIDATION_PASS if output_ok else AuditAction.OUTPUT_VALIDATION_FAIL),
+                        timestamp=datetime.now(UTC).isoformat(),
+                        context_id=context_id,
+                        tool_name=None,
+                        reason=("agent response validation passed" if output_ok else "; ".join(output_errors)),
+                        details={"schema_type": SchemaType.AGENT_RESPONSE.value},
+                    )
+                )
+
+                conversation.append({"role": "assistant", "content": final_text})
+                break
+        except ResourceLimitExceeded as exc:
             governance_logger.log(
                 AuditEntry(
                     trace_id=str(uuid4()),
-                    action=(AuditAction.OUTPUT_VALIDATION_PASS if output_ok else AuditAction.OUTPUT_VALIDATION_FAIL),
+                    action=AuditAction.CIRCUIT_BREAKER_TRIGGERED,
                     timestamp=datetime.now(UTC).isoformat(),
                     context_id=context_id,
                     tool_name=None,
-                    reason=("agent response validation passed" if output_ok else "; ".join(output_errors)),
-                    details={"schema_type": SchemaType.AGENT_RESPONSE.value},
+                    reason=str(exc),
+                    details=exc.metrics,
                 )
             )
-
-            conversation.append({"role": "assistant", "content": final_text})
-            break
+            return {
+                "assistant_response": {
+                    "answer": f"任務已終止：觸發資源與成本熔斷（{str(exc)}）。",
+                    "sources": [],
+                },
+                "context_id": context_id,
+            }
 
     return {
         "assistant_response": structured_response,

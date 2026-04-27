@@ -1,5 +1,11 @@
 version: "1.0"
 default_context: "general"
+resource_limits:
+  max_total_tokens: 8000
+  max_model_calls: 8
+  max_tool_calls: 8
+  max_tool_calls_per_tool: 4
+  max_total_latency_ms: 180000
 contexts:
   general:
     identity: "General Assistant"
