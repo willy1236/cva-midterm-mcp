@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import multiprocessing as mp
 import os
 import time
@@ -9,7 +8,7 @@ from urllib.request import urlopen
 
 
 def run_mcp_server() -> None:
-    from server.app import mcp
+    from mcpServer.app import mcp
 
     host = os.getenv("MCP_HOST", "127.0.0.1")
     port = int(os.getenv("MCP_PORT", "8001"))
@@ -28,7 +27,7 @@ def run_mcp_server() -> None:
 def run_user_host_server() -> None:
     # main.py 已獨立啟動 MCP server，避免 user_host_server 再啟一份。
     os.environ["AUTO_START_LOCAL_MCP"] = "0"
-    from user_host_server import main as run_host_main
+    from host.server import main as run_host_main
 
     run_host_main()
 

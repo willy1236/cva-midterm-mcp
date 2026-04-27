@@ -4,7 +4,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from server.response import ErrorCode, ErrorResponse, SuccessResponse, build_error, build_success
+from mcpServer.response import ErrorCode, ErrorResponse, SuccessResponse, build_error, build_success
 
 mcp = FastMCP("Trust Constraint MCP Server")
 

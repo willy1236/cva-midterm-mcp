@@ -4,7 +4,6 @@ import asyncio
 import json
 import multiprocessing as mp
 import os
-import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -18,11 +17,11 @@ from fastmcp import Client
 from mcp.types import CallToolResult, TextResourceContents, Tool
 from openai import OpenAI
 from openai.types.chat.chat_completion import ChatCompletion
-from pydantic import BaseModel, Field
 
-from audits.governance_logger import AuditAction, AuditEntry, GovernanceLogger
-from validators.output_validator import SchemaType, validate_output_structure
-from validators.tool_gatekeeper import secure_tool_call
+from host.audits.governance_logger import AuditAction, AuditEntry, GovernanceLogger
+from host.session import ChatRequest, SessionContextRequest, SessionStartRequest, SessionStore
+from host.validators.output_validator import SchemaType, validate_output_structure
+from host.validators.tool_gatekeeper import secure_tool_call
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
@@ -45,82 +44,8 @@ AUDIT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 governance_logger = GovernanceLogger(log_file=AUDIT_LOG_FILE)
 
 
-class SessionStore:
-    def __init__(self, file_path: Path) -> None:
-        self._file_path = file_path
-        self._lock = threading.Lock()
-        self._sessions: dict[str, dict[str, Any]] = {}
-        self._load()
-
-    def _load(self) -> None:
-        if not self._file_path.exists():
-            self._sessions = {}
-            return
-
-        raw = self._file_path.read_text(encoding="utf-8").strip()
-        if not raw:
-            self._sessions = {}
-            return
-
-        payload = json.loads(raw)
-        sessions = payload.get("sessions", {}) if isinstance(payload, dict) else {}
-        self._sessions = sessions if isinstance(sessions, dict) else {}
-
-    def _save(self) -> None:
-        self._file_path.write_text(
-            json.dumps({"sessions": self._sessions}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-    def create(self, *, context_id: str = "general") -> dict[str, Any]:
-        with self._lock:
-            session_id = str(uuid4())
-            now = datetime.now(UTC).isoformat()
-            record: dict[str, Any] = {
-                "session_id": session_id,
-                "context_id": context_id,
-                "created_at": now,
-                "updated_at": now,
-                "messages": [],
-            }
-            self._sessions[session_id] = record
-            self._save()
-            return record
-
-    def get(self, session_id: str) -> dict[str, Any] | None:
-        with self._lock:
-            record = self._sessions.get(session_id)
-            if not isinstance(record, dict):
-                return None
-            return record.copy()
-
-    def set_context(self, session_id: str, context_id: str) -> None:
-        with self._lock:
-            record = self._sessions.get(session_id)
-            if not isinstance(record, dict):
-                raise KeyError("session not found")
-            record["context_id"] = context_id
-            record["updated_at"] = datetime.now(UTC).isoformat()
-            self._save()
-
-    def append_message(self, session_id: str, message: dict[str, Any]) -> None:
-        with self._lock:
-            record = self._sessions.get(session_id)
-            if not isinstance(record, dict):
-                raise KeyError("session not found")
-
-            messages = record.setdefault("messages", [])
-            if not isinstance(messages, list):
-                messages = []
-                record["messages"] = messages
-
-            messages.append(message)
-            record["updated_at"] = datetime.now(UTC).isoformat()
-            self._save()
-
-
 def run_local_http_server() -> None:
-    from server.app import mcp
+    from mcpServer.app import mcp
 
     mcp.run(
         transport="http",
@@ -128,7 +53,7 @@ def run_local_http_server() -> None:
         port=MCP_PORT,
         path=MCP_PATH,
         show_banner=False,
-        log_level="warning",
+        log_level="info",
     )
 
 
@@ -394,20 +319,6 @@ async def run_single_turn(
     }
 
 
-class SessionStartRequest(BaseModel):
-    context_id: str = Field(default="general")
-
-
-class SessionContextRequest(BaseModel):
-    session_id: str
-    context_id: str
-
-
-class ChatRequest(BaseModel):
-    session_id: str
-    message: str
-
-
 class AppState:
     def __init__(self) -> None:
         self.store = SessionStore(SESSION_FILE)
@@ -421,6 +332,7 @@ state = AppState()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if AUTO_START_LOCAL_MCP:
+        print("Auto-starting local MCP server...")
         state.server_process = mp.Process(target=run_local_http_server, daemon=True)
         state.server_process.start()
 

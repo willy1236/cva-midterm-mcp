@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from policies.config_loader import get_context_profile
+from host.policies.config_loader import get_context_profile
 
 READ_ONLY_KEYWORDS = {"delete", "create", "write", "update", "drop", "insert", "modify", "remove"}
 

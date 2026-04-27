@@ -6,12 +6,15 @@ from typing import Any
 import yaml
 from cachetools import TTLCache, cached
 
-_CONFIG_PATH = Path(__file__).with_name("config.yaml")
+_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
 config_cache = TTLCache(maxsize=1, ttl=600)  # 10 minutes cache for config loading
 
 
 @cached(config_cache)
 def load_constraint_config() -> dict[str, Any]:
+    if not _CONFIG_PATH.exists():
+        raise FileNotFoundError(f"Constraint config not found at repo root: {_CONFIG_PATH}")
+
     with _CONFIG_PATH.open("r", encoding="utf-8") as file:
         raw = yaml.safe_load(file) or {}
 

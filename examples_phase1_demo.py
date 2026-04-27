@@ -14,9 +14,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from audits.governance_logger import AuditAction, GovernanceLogger
-from validators.output_validator import SchemaType, validate_output_structure
-from validators.tool_gatekeeper import secure_tool_call
+from host.audits.governance_logger import AuditAction, GovernanceLogger
+from host.validators.output_validator import SchemaType, validate_output_structure
+from host.validators.tool_gatekeeper import secure_tool_call
 
 
 def print_section(title: str) -> None:
@@ -123,7 +123,7 @@ def demo_governance_logger() -> None:
     from datetime import UTC, datetime
     from uuid import uuid4
 
-    from audits.governance_logger import AuditEntry
+    from host.audits.governance_logger import AuditEntry
 
     events = [
         AuditEntry(

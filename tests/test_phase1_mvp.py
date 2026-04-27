@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 
-from audits.governance_logger import AuditAction, AuditEntry, GovernanceLogger
-from server.app import mcp
-from validators.output_validator import SchemaType, validate_output_structure
-from validators.tool_gatekeeper import secure_tool_call
+from host.audits.governance_logger import AuditAction, AuditEntry, GovernanceLogger
+from mcpServer.app import mcp
+from host.validators.output_validator import SchemaType, validate_output_structure
+from host.validators.tool_gatekeeper import secure_tool_call
 
 
 class TestToolGatekeeper:
