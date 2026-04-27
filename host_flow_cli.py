@@ -15,7 +15,6 @@ DEFAULT_CHAT_TIMEOUT = float(os.getenv("HOST_CHAT_TIMEOUT", "300"))
 class ClientState:
     base_url: str
     session_id: str | None = None
-    context_id: str | None = None
 
 
 def http_json(
@@ -90,7 +89,22 @@ def cmd_start_session(state: ClientState) -> None:
     created = data.get("data") if isinstance(data.get("data"), dict) else None
     if created:
         state.session_id = str(created.get("session_id") or "") or None
-        state.context_id = str(created.get("context_id") or "") or None
+
+
+def cmd_get_session_data(state: ClientState) -> dict[str, Any] | None:
+    if not state.session_id:
+        return None
+
+    status, data = http_json(
+        base_url=state.base_url,
+        method="GET",
+        path=f"/session/{state.session_id}",
+    )
+    if status != 200:
+        return None
+
+    session = data.get("data") if isinstance(data.get("data"), dict) else None
+    return session if isinstance(session, dict) else None
 
 
 def cmd_switch_context(state: ClientState) -> None:
@@ -98,7 +112,10 @@ def cmd_switch_context(state: ClientState) -> None:
         print("請先建立 session 或手動設定 session_id")
         return
 
-    context_id = ask("new context_id", default=state.context_id or "general")
+    session = cmd_get_session_data(state)
+    current_context_id = str(session.get("context_id") or "general") if session else "general"
+
+    context_id = ask("new context_id", default=current_context_id)
     status, data = http_json(
         base_url=state.base_url,
         method="POST",
@@ -107,10 +124,6 @@ def cmd_switch_context(state: ClientState) -> None:
     )
     print(f"HTTP {status}")
     print_json("session/context", data)
-
-    current = data.get("data") if isinstance(data.get("data"), dict) else None
-    if current:
-        state.context_id = str(current.get("context_id") or "") or state.context_id
 
 
 def cmd_chat(state: ClientState) -> None:
@@ -136,10 +149,6 @@ def cmd_chat(state: ClientState) -> None:
     if status == 0 and isinstance(data.get("error"), str) and "timed out" in data["error"].lower():
         print("提示：/chat 已超過目前的等待時間，但伺服器可能仍在處理該輪對話。可將 HOST_CHAT_TIMEOUT 調大後再試。")
 
-    result = data.get("data") if isinstance(data.get("data"), dict) else None
-    if result:
-        state.context_id = str(result.get("context_id") or "") or state.context_id
-
 
 def cmd_get_session(state: ClientState) -> None:
     if not state.session_id:
@@ -153,6 +162,30 @@ def cmd_get_session(state: ClientState) -> None:
     )
     print(f"HTTP {status}")
     print_json("session/get", data)
+
+
+def cmd_list_sessions(state: ClientState) -> None:
+    status, data = http_json(
+        base_url=state.base_url,
+        method="GET",
+        path="/sessions",
+    )
+    print(f"HTTP {status}")
+
+    sessions = data.get("data") if isinstance(data.get("data"), list) else []
+    if not sessions:
+        print("目前沒有任何 session")
+        return
+
+    print("目前 session 清單:")
+    for index, session in enumerate(sessions, start=1):
+        if not isinstance(session, dict):
+            continue
+        session_id = str(session.get("session_id") or "-")
+        context_id = str(session.get("context_id") or "-")
+        updated_at = str(session.get("updated_at") or "-")
+        message_count = len(session.get("messages", [])) if isinstance(session.get("messages"), list) else 0
+        print(f"{index}. session_id={session_id} | context_id={context_id} | messages={message_count} | updated_at={updated_at}")
 
 
 def cmd_set_session_id(state: ClientState) -> None:
@@ -176,11 +209,7 @@ def cmd_set_base_url(state: ClientState) -> None:
 def cmd_show_state(state: ClientState) -> None:
     print_json(
         "local_state",
-        {
-            "base_url": state.base_url,
-            "session_id": state.session_id,
-            "context_id": state.context_id,
-        },
+        {"base_url": state.base_url, "session_id": state.session_id},
     )
 
 
@@ -188,13 +217,14 @@ def print_menu() -> None:
     print("\n=== Host Flow CLI ===")
     print("1) health 檢查伺服器狀態")
     print("2) session/start 建立新 session")
-    print("3) session/context 切換 context")
-    print("4) chat 發送訊息")
-    print("5) session/{id} 獲取 session 資訊")
-    print("6) 顯示本地狀態")
-    print("7) 設定 session_id")
-    print("8) 設定 base_url")
-    print("9) quit")
+    print("3) sessions 列出現有 session")
+    print("4) session/context 切換 context")
+    print("5) chat 發送訊息")
+    print("6) session/{id} 獲取 session 資訊")
+    print("7) 顯示本地狀態")
+    print("8) 設定 session_id")
+    print("9) 設定 base_url")
+    print("10) quit")
 
 
 def run_cli() -> int:
@@ -206,19 +236,20 @@ def run_cli() -> int:
     actions = {
         "1": cmd_health,
         "2": cmd_start_session,
-        "3": cmd_switch_context,
-        "4": cmd_chat,
-        "5": cmd_get_session,
-        "6": cmd_show_state,
-        "7": cmd_set_session_id,
-        "8": cmd_set_base_url,
+        "3": cmd_list_sessions,
+        "4": cmd_switch_context,
+        "5": cmd_chat,
+        "6": cmd_get_session,
+        "7": cmd_show_state,
+        "8": cmd_set_session_id,
+        "9": cmd_set_base_url,
     }
 
     while True:
         print_menu()
         choice = input("選項: ").strip().lower()
 
-        if choice in {"9", "q", "quit", "exit"}:
+        if choice in {"10", "q", "quit", "exit"}:
             print("Bye")
             return 0
 

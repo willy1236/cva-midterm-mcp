@@ -57,6 +57,10 @@ class SessionStore:
                 return None
             return record.copy()
 
+    def list_sessions(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return [record.copy() for record in self._sessions.values() if isinstance(record, dict)]
+
     def set_context(self, session_id: str, context_id: str) -> None:
         with self._lock:
             record = self._sessions.get(session_id)

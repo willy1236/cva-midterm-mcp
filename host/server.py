@@ -368,6 +368,11 @@ async def session_get(session_id: str) -> dict[str, Any]:
     return {"ok": True, "data": session}
 
 
+@app.get("/sessions")
+async def sessions_list() -> dict[str, Any]:
+    return {"ok": True, "data": state.store.list_sessions()}
+
+
 @app.post("/chat")
 async def chat(payload: ChatRequest) -> dict[str, Any]:
     session_id = payload.session_id.strip()
