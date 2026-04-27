@@ -14,11 +14,12 @@ from uuid import uuid4
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastmcp import Client
-from mcp.types import CallToolResult, TextResourceContents, Tool
+from mcp.types import CallToolResult, Tool
 from openai import OpenAI
 from openai.types.chat.chat_completion import ChatCompletion
 
 from host.audits.governance_logger import AuditAction, AuditEntry, GovernanceLogger
+from host.policies.config_loader import get_context_profile
 from host.session import ChatRequest, SessionContextRequest, SessionStartRequest, SessionStore
 from host.validators.output_validator import SchemaType, validate_output_structure
 from host.validators.tool_gatekeeper import secure_tool_call
@@ -126,21 +127,6 @@ def format_tool_result(result: CallToolResult) -> str:
     return str(result)
 
 
-def parse_resource_json(contents: list[TextResourceContents]) -> dict[str, Any]:
-    if not contents:
-        raise RuntimeError("MCP resource returned no contents")
-
-    text = contents[0].text
-    if not text:
-        raise RuntimeError("MCP resource returned empty text")
-
-    payload = json.loads(text)
-    if not isinstance(payload, dict):
-        raise RuntimeError("MCP resource payload must be a JSON object")
-
-    return payload
-
-
 async def run_single_turn(
     *,
     llm_client: OpenAI,
@@ -156,10 +142,8 @@ async def run_single_turn(
         mcp_tools = await mcp_client.list_tools()
         openai_tools = mcp_tools_to_openai_tools(mcp_tools)
 
-        # 3) 讀取上下文設定，將對應 system_prompt 合併到基礎提示詞。
-        profile_contents = await mcp_client.read_resource(f"resource://profile/{context_id}")
-        profile_payload = parse_resource_json(profile_contents)
-        profile_data = profile_payload.get("data") if isinstance(profile_payload, dict) else None
+        # 3) 由 policies 模組讀取上下文設定，將對應 system_prompt 合併到基礎提示詞。
+        profile_data = get_context_profile(context_id)
 
         system_prompt = SYSTEM_PROMPT
         if isinstance(profile_data, dict):
