@@ -80,6 +80,22 @@ class TestOutputValidator:
         assert valid is True
         assert len(errors) == 0
 
+    def test_agent_response_schema_valid_structured_output(self) -> None:
+        data = {
+            "answer": "台北今天晴朗。",
+            "sources": [
+                {
+                    "source_id": "tool-1",
+                    "tool_name": "get_weather",
+                }
+            ],
+            "context_id": "general",
+            "available_tools": ["get_weather"],
+        }
+        valid, errors = validate_output_structure(data=data, schema_type=SchemaType.AGENT_RESPONSE)
+        assert valid is True
+        assert len(errors) == 0
+
     def test_peer_review_schema_invalid_verdict(self) -> None:
         data = {
             "content": "Review content",

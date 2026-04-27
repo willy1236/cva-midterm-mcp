@@ -39,7 +39,7 @@ HOST_SERVER_PORT = int(os.getenv("HOST_SERVER_PORT", "8010"))
 SESSION_FILE = Path(os.getenv("HOST_SESSION_FILE", "host_sessions.json"))
 AUDIT_LOG_FILE = Path(os.getenv("GOVERNANCE_AUDIT_FILE", "logs/governance_audit.jsonl"))
 
-SYSTEM_PROMPT = "你是一個可呼叫工具的 AI 助手。當你需要外部資料時，請優先呼叫可用工具，不要猜測。回覆使用繁體中文，且簡潔清楚。"
+SYSTEM_PROMPT = '你是一個可呼叫工具的 AI 助手。當你需要外部資料時，請優先呼叫可用工具，不要猜測。最終回覆請只輸出 JSON 物件，格式為 {"answer": "...", "sources": [{"source_id": "...", "tool_name": "..."}] }，source_id請依序編號，並且answer要同時在對應的位置標記出。請用標註格式如 [citation:1]。回覆使用繁體中文，且簡潔清楚。'
 
 AUDIT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 governance_logger = GovernanceLogger(log_file=AUDIT_LOG_FILE)
@@ -110,7 +110,7 @@ def call_openai_chat(
         raise RuntimeError(f"OpenAI API error: {exc}") from exc
 
 
-def format_tool_result(result: CallToolResult) -> str:
+def format_tool_result(result: CallToolResult, tool_call_id: str | None = None) -> str:
     if getattr(result, "content", None):
         chunks: list[str] = []
         for item in result.content:
@@ -118,13 +118,53 @@ def format_tool_result(result: CallToolResult) -> str:
             if text:
                 chunks.append(text)
         if chunks:
-            return "\n".join(chunks)
+            formatted = "\n".join(chunks)
+    else:
+        structured = getattr(result, "structuredContent", None)
+        if structured is not None:
+            formatted = json.dumps(structured, ensure_ascii=False)
+        else:
+            formatted = str(result)
 
-    structured = getattr(result, "structuredContent", None)
-    if structured is not None:
-        return json.dumps(structured, ensure_ascii=False)
+    if tool_call_id:
+        return f"[工具來源 ID: {tool_call_id}]\n{formatted}"
+    return formatted
 
-    return str(result)
+
+def _strip_code_fences(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+
+    lines = stripped.splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def parse_structured_assistant_output(text: str) -> dict[str, Any]:
+    raw_text = text.strip()
+    if not raw_text:
+        return {"answer": "", "sources": []}
+
+    candidate = _strip_code_fences(raw_text)
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError:
+        return {"answer": raw_text, "sources": []}
+
+    if not isinstance(parsed, dict):
+        return {"answer": raw_text, "sources": []}
+
+    answer = parsed.get("answer")
+    if answer is None:
+        answer = parsed.get("content", "")
+
+    sources = parsed.get("sources", [])
+    normalized_sources = [source for source in sources if isinstance(source, dict)] if isinstance(sources, list) else []
+    return {"answer": str(answer).strip(), "sources": normalized_sources}
 
 
 async def run_single_turn(
@@ -202,6 +242,7 @@ async def run_single_turn(
                         arguments=arguments,
                         context_id=context_id,
                     )
+                    # 8) 不論允許與否都記錄審計日誌，包含工具名稱、參數、上下文識別、決策結果與理由等。
                     audit_trace_id = str(uuid4())
                     governance_logger.log(
                         AuditEntry(
@@ -235,11 +276,11 @@ async def run_single_turn(
                         )
                         continue
 
-                    # 8) 僅在通過授權後才執行 MCP 工具。
+                    # 9) 僅在通過授權後才執行 MCP 工具。
                     mcp_result = await mcp_client.call_tool(tool_name, arguments)
-                    tool_text = format_tool_result(mcp_result)
+                    tool_text = format_tool_result(mcp_result, tool_call_id=tool_call.id)
 
-                    # 9) 工具執行後進行輸出結構驗證。
+                    # 10) 工具執行後進行輸出結構驗證。
                     output_ok, output_errors = validate_output_structure(
                         data={
                             "tool_name": tool_name,
@@ -248,6 +289,7 @@ async def run_single_turn(
                         },
                         schema_type=SchemaType.TOOL_RESULT,
                     )
+                    # 11) 同樣記錄審計日誌，包含驗證結果與錯誤訊息等。
                     governance_logger.log(
                         AuditEntry(
                             trace_id=str(uuid4()),
@@ -289,17 +331,44 @@ async def run_single_turn(
                     )
                 continue
 
-            # 10) 無需再調用工具時，輸出最終文字回應並結束。
-            final_text = content or "（模型沒有回傳文字內容）"
+            # 12) 無需再調用工具時，將最終內容解析成結構化回覆並結束。
+            structured_response = parse_structured_assistant_output(content or "")
+            final_text = structured_response.get("answer", "") or "（模型沒有回傳文字內容）"
+            structured_sources = structured_response.get("sources", [])
+            if not isinstance(structured_sources, list):
+                structured_sources = []
+
+            assistant_response = {
+                "answer": final_text,
+                "sources": structured_sources,
+            }
+            output_ok, output_errors = validate_output_structure(
+                data={
+                    "answer": final_text,
+                    "sources": structured_sources,
+                    "context_id": context_id,
+                    "available_tools": [tool.name for tool in mcp_tools],
+                },
+                schema_type=SchemaType.AGENT_RESPONSE,
+            )
+            governance_logger.log(
+                AuditEntry(
+                    trace_id=str(uuid4()),
+                    action=(AuditAction.OUTPUT_VALIDATION_PASS if output_ok else AuditAction.OUTPUT_VALIDATION_FAIL),
+                    timestamp=datetime.now(UTC).isoformat(),
+                    context_id=context_id,
+                    tool_name=None,
+                    reason=("agent response validation passed" if output_ok else "; ".join(output_errors)),
+                    details={"schema_type": SchemaType.AGENT_RESPONSE.value},
+                )
+            )
+
             conversation.append({"role": "assistant", "content": final_text})
             break
 
     return {
-        "assistant": final_text,
+        "assistant_response": assistant_response,
         "context_id": context_id,
-        "profile": profile_data,
-        "messages": conversation[1:],
-        "available_tools": [tool.name for tool in mcp_tools],
     }
 
 
@@ -402,7 +471,7 @@ async def chat(payload: ChatRequest) -> dict[str, Any]:
     state.store.append_message(session_id, {"role": "user", "content": message})
     state.store.append_message(
         session_id,
-        {"role": "assistant", "content": result["assistant"]},
+        {"role": "assistant", "content": result["assistant_response"]["answer"]},
     )
 
     return {
@@ -410,8 +479,7 @@ async def chat(payload: ChatRequest) -> dict[str, Any]:
         "data": {
             "session_id": session_id,
             "context_id": result["context_id"],
-            "assistant": result["assistant"],
-            "available_tools": result["available_tools"],
+            "assistant_response": result["assistant_response"],
         },
     }
 

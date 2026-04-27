@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
 
 
 class SchemaType(str, Enum):
@@ -27,9 +27,10 @@ class ToolResultSchema(BaseModel):
 
 
 class AgentResponseSchema(BaseModel):
-    content: str
+    answer: str = Field(validation_alias=AliasChoices("answer", "content"))
+    sources: list[dict[str, Any]] = Field(default_factory=list)
     context_id: str | None = None
-    available_tools: list[str] = []
+    available_tools: list[str] = Field(default_factory=list)
 
 
 class PeerReviewSchema(BaseModel):
@@ -65,7 +66,7 @@ class OutputValidationError(Exception):
     pass
 
 
-def validate_output_structure(*, data: Any, schema_type: SchemaType | str) -> tuple[bool, list[str]]:
+def validate_output_structure(*, data: object, schema_type: SchemaType | str) -> tuple[bool, list[str]]:
     if isinstance(schema_type, str):
         try:
             schema_type = SchemaType(schema_type)
