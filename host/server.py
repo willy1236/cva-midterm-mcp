@@ -338,10 +338,6 @@ async def run_single_turn(
             if not isinstance(structured_sources, list):
                 structured_sources = []
 
-            assistant_response = {
-                "answer": final_text,
-                "sources": structured_sources,
-            }
             output_ok, output_errors = validate_output_structure(
                 data={
                     "answer": final_text,
@@ -367,7 +363,7 @@ async def run_single_turn(
             break
 
     return {
-        "assistant_response": assistant_response,
+        "assistant_response": structured_response,
         "context_id": context_id,
     }
 
