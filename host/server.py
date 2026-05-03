@@ -20,7 +20,9 @@ from openai.types.chat.chat_completion import ChatCompletion
 
 from host.audits.governance_logger import AuditAction, AuditEntry, GovernanceLogger
 from host.policies.config_loader import get_context_profile
+from host.policies.policy_enforcer import enforce_policy
 from host.session import ChatRequest, SessionContextRequest, SessionStartRequest, SessionStore
+from host.validators.content_classifier import classify_content
 from host.validators.output_validator import SchemaType, validate_output_structure
 from host.validators.resource_circuit_breaker import (
     ResourceCircuitBreaker,
@@ -255,7 +257,7 @@ async def run_single_turn(
                         except json.JSONDecodeError:
                             arguments = {}
 
-                        # 7) 工具調用前先做治理檢查，不合規即阻擋。
+                        # 7) 工具調用前先做工具調用檢查，不合規即阻擋。
                         allowed, reason = secure_tool_call(
                             tool_name=tool_name,
                             arguments=arguments,
@@ -357,6 +359,80 @@ async def run_single_turn(
                 if not isinstance(structured_sources, list):
                     structured_sources = []
 
+                # 13) Module 6 - 內容安全分類與動態政策應用
+                classification_result = await classify_content(
+                    text=final_text,
+                    context_id=context_id,
+                )
+                classification_trace_id = str(uuid4())
+                governance_logger.log(
+                    AuditEntry(
+                        trace_id=classification_trace_id,
+                        action=AuditAction.CONTENT_CLASSIFICATION,
+                        timestamp=datetime.now(UTC).isoformat(),
+                        context_id=context_id,
+                        tool_name=None,
+                        reason=f"Classification: {classification_result.classification.value}",
+                        details={
+                            "classification": classification_result.classification.value,
+                            "risk_score": classification_result.risk_score,
+                            "content_types": classification_result.content_types,
+                            "confidence": classification_result.confidence,
+                        },
+                    )
+                )
+
+                # 根據分類結果應用政策
+                policy_result = await enforce_policy(
+                    classification=classification_result,
+                    context_id=context_id,
+                    profile_data=profile_data,
+                    logger=governance_logger,
+                )
+
+                # 若被政策阻擋，直接返回阻擋回覆
+                if not policy_result["allowed"]:
+                    policy_trace_id = str(uuid4())
+                    governance_logger.log(
+                        AuditEntry(
+                            trace_id=policy_trace_id,
+                            action=AuditAction.CONTENT_BLOCKED_BY_POLICY,
+                            timestamp=datetime.now(UTC).isoformat(),
+                            context_id=context_id,
+                            tool_name=None,
+                            reason=policy_result["reason"],
+                            details=policy_result.get("details", {}),
+                        )
+                    )
+                    return {
+                        "assistant_response": {
+                            "answer": policy_result["reason"],
+                            "sources": [],
+                        },
+                        "context_id": context_id,
+                        "blocked_by_policy": True,
+                    }
+
+                # 若需修改（添加免責聲明等），更新最終文本
+                if policy_result.get("modified_text"):
+                    disclaimer = policy_result["modified_text"]
+                    final_text = f"{disclaimer}\n\n{final_text}" if disclaimer else final_text
+
+                # 記錄政策應用結果
+                policy_audit_action = policy_result["audit_action"]
+                governance_logger.log(
+                    AuditEntry(
+                        trace_id=str(uuid4()),
+                        action=AuditAction[policy_audit_action],
+                        timestamp=datetime.now(UTC).isoformat(),
+                        context_id=context_id,
+                        tool_name=None,
+                        reason=f"Policy level: {policy_result['policy_level']}",
+                        details=policy_result.get("details", {}),
+                    )
+                )
+
+                # 14) 最後對整體回覆結構再次進行驗證，並記錄驗證結果。
                 output_ok, output_errors = validate_output_structure(
                     data={
                         "answer": final_text,
@@ -381,6 +457,7 @@ async def run_single_turn(
                 conversation.append({"role": "assistant", "content": final_text})
                 break
         except ResourceLimitExceeded as exc:
+            # 15) 若在任何階段觸發資源與成本熔斷，記錄審計日誌並返回終止回覆。
             governance_logger.log(
                 AuditEntry(
                     trace_id=str(uuid4()),

@@ -72,6 +72,23 @@
 - 熔斷觸發時會寫入 `CIRCUIT_BREAKER_TRIGGERED` 審計事件，`details` 會帶當下資源指標。
 - 延遲單位為毫秒（ms），欄位為 `max_total_latency_ms`。
 
+### 1.8 Content Safety / Dynamic Policy（模組 6）
+
+此模組負責對模型產出的文本進行三層式安全分類，並根據 context 的政策決定是否允許、修改或阻擋輸出；同時與引用驗證與稽核模組整合，形成對外輸出的治理閉環。
+
+- 主要檔案與職責：
+  - `host/validators/content_classifier.py`：內容分類器（規則 + 關鍵詞 + 簡單相似度），回傳 `ClassificationResult`（包含 `classification`, `risk_score`, `content_types`, `blocking_reasons`, `confidence`）。
+  - `host/policies/policy_enforcer.py`：政策執行器，根據 context profile 的 policy（位於 `config.yaml` 的 `contexts.<id>.policy`）做允許/阻擋/修改決策，並回傳對應的 `audit_action` 與 `modified_text`（若需加入免責聲明）。
+  - `host/validators/citation_verifier.py`：引用驗證工具（Module 3），可檢查主張與來源的對應性並回報 VERIFIED/UNVERIFIED/REJECTED，用於強化知識可追溯性。
+  - `host/audits/governance_logger.py`：稽核擴充：新增 `CONTENT_CLASSIFICATION`、`CONTENT_POLICY_APPLIED`、`CONTENT_BLOCKED_BY_POLICY`、`CONTENT_MODIFIED_BY_POLICY` 等事件。
+  - `host/server.py`：在對話回覆生成後（step 12.5）插入分類→政策→引用驗證流程，依結果決定是否阻擋或在回覆前加入免責聲明，並記錄對應審計事件。
+
+- 設定位置：
+  - 將政策資料（policy defaults 與 context 覆寫）存放於 `config.yaml`：
+    - 全域預設：`policy_defaults`（risk 門檻、content_type_policy、requires_disclaimer 等）
+    - 各 context 可在 `contexts.<id>.policy` 覆寫（例如 `general` / `esg` / `code_dev`）。
+  - `host/policies/config_loader.py` 會合併 `policy_defaults` 與 `contexts.<id>.policy`，並把結果放入 context profile 回傳給 runtime 使用。
+
 ## 2. 使用者 Client 層
 
 - `client/cli.py` 提供互動式 CLI，用來操作 host server、建立 session 與送出聊天訊息。
@@ -113,3 +130,4 @@
   - `mcpServer/app.py`
   - `mcpServer/response.py`
   - `client/cli.py`
+ 

@@ -70,12 +70,21 @@ graph TD
         Server <-->|3. 資源監控| Breaker[資源熔斷模組 <br> Circuit Breaker]
         Server <-->|4. 工具審查| Gatekeeper[工具守門模組 <br> Tool Gatekeeper]
         Server <-->|5. 格式確保| Validator[輸出驗證模組 <br> Output Validator]
-        
+        %% Module 6: 內容安全與動態政策
+        Server <-->|12.5 內容分類| Classifier["內容分類模組 <br> classify_content()"]
+        Classifier -->|分類結果| PolicyEnforcer["政策執行模組 <br> enforce_policy()"]
+        PolicyEnforcer -->|允許| CitationVerifier["引用驗證模組 <br> verify_citations()"]
+        CitationVerifier -->|驗證通過| Validator
+        CitationVerifier -->|驗證失敗或衝突| PolicyEnforcer
+
         Session -.-> Logger
         Policy -.-> Logger
         Breaker -.-> Logger
         Gatekeeper -.->|記錄攔截與允許| Logger
         Validator -.->|記錄驗證結果| Logger
+        Classifier -.->|記錄分類| Logger
+        PolicyEnforcer -.->|記錄政策動作| Logger
+        CitationVerifier -.->|記錄引用核查| Logger
         
         Logger[(稽核紀錄模組 <br> Governance Logger)]
     end

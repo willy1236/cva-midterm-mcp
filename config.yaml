@@ -6,6 +6,28 @@ resource_limits:
   max_tool_calls: 8
   max_tool_calls_per_tool: 4
   max_total_latency_ms: 180000
+policy_defaults:
+  policy_level: "general"
+  allowed_classifications:
+    - "SAFE"
+  blocked_classifications:
+    - "BLOCKED"
+    - "RISKY"
+  restricted_classifications:
+    - "SENSITIVE"
+  risk_score_threshold:
+    safe: 0.15
+    sensitive: 0.40
+    risky: 0.70
+  content_type_policy:
+    financial: "allowed_with_disclaimer"
+    medical: "restricted"
+    personal_data: "blocked"
+    unauthorized_operations: "blocked"
+    legal_violation: "blocked"
+  requires_disclaimer:
+    - "financial"
+    - "medical"
 contexts:
   general:
     identity: "General Assistant"
@@ -18,6 +40,8 @@ contexts:
       allowed:
         - "get_weather"
       mode: "read-only"
+    policy:
+      policy_level: "general"
   esg:
     identity: "ESG Auditor"
     system_prompt: "你是 ESG 審計代理，回覆僅限可驗證資料。"
@@ -28,6 +52,21 @@ contexts:
     tool_scope:
       allowed:
       mode: "read-only"
+    policy:
+      policy_level: "sensitive"
+      risk_score_threshold:
+        safe: 0.10
+        sensitive: 0.35
+        risky: 0.65
+      content_type_policy:
+        financial: "restricted"
+        medical: "blocked"
+        personal_data: "blocked"
+        unauthorized_operations: "blocked"
+        legal_violation: "blocked"
+      requires_disclaimer:
+        - "financial"
+        - "legal_violation"
   code_dev:
     identity: "Senior Python Developer"
     system_prompt: "你是資深開發代理，產出需重視正確性與可維護性。"
@@ -38,3 +77,24 @@ contexts:
     tool_scope:
       allowed:
       mode: "read-only"
+    policy:
+      policy_level: "risky"
+      allowed_classifications:
+        - "SAFE"
+        - "SENSITIVE"
+      blocked_classifications:
+        - "BLOCKED"
+      restricted_classifications:
+        - "RISKY"
+      risk_score_threshold:
+        safe: 0.20
+        sensitive: 0.50
+        risky: 0.75
+      content_type_policy:
+        financial: "allowed"
+        medical: "blocked"
+        personal_data: "blocked"
+        unauthorized_operations: "blocked"
+        legal_violation: "blocked"
+      requires_disclaimer:
+        - "unauthorized_operations"

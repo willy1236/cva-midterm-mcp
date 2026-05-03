@@ -10,6 +10,16 @@ _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
 config_cache = TTLCache(maxsize=1, ttl=600)  # 10 minutes cache for config loading
 
 
+def _merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(merged.get(key), dict) and isinstance(value, dict):
+            merged[key] = _merge_dicts(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 @cached(config_cache)
 def load_constraint_config() -> dict[str, Any]:
     if not _CONFIG_PATH.exists():
@@ -43,6 +53,22 @@ def get_context_profile(context_id: str) -> dict[str, Any]:
         context_resource_limits = {}
 
     resource_limits = {**global_resource_limits, **context_resource_limits}
+    policy_defaults = config.get("policy_defaults", {})
+    if not isinstance(policy_defaults, dict):
+        policy_defaults = {}
+
+    # 優先從 context profile 裡讀 policy（key 可為 policy 或 policy_rules），
+    # 若不存在則回退到舊的頂層 policy_rules 配置（相容性）
+    profile_policy = profile.get("policy") or profile.get("policy_rules")
+    if profile_policy and isinstance(profile_policy, dict):
+        policy_overrides = profile_policy
+    else:
+        policy_overrides = config.get("policy_rules", {}).get(selected, {})
+
+    if not isinstance(policy_overrides, dict):
+        policy_overrides = {}
+
+    policy_rules = _merge_dicts(policy_defaults, policy_overrides)
 
     return {
         "context_id": selected,
@@ -51,5 +77,6 @@ def get_context_profile(context_id: str) -> dict[str, Any]:
         "absolute_rules": profile.get("absolute_rules", []),
         "tool_scope": profile.get("tool_scope", {}),
         "resource_limits": resource_limits,
+        "policy_rules": policy_rules,
         "policy_version": config.get("version", "unknown"),
     }
