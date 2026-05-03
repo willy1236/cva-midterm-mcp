@@ -1,3 +1,8 @@
+"""
+Module 1: Context Manager — 上下文管理與驗證
+Context Manager 負責管理和驗證輸入文本的上下文信息，以及設定檔相關的處理與載入。
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

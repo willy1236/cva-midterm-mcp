@@ -53,11 +53,10 @@ graph TD
         direction TB
         subgraph MCPServer [MCP 伺服器層]
             MCPApp[mcpServer/app.py <br> FastMCP 服務]
-            MCPTool[註冊工具 <br> e.g., get_weather]
         end
 
         subgraph AIServer [AI Server層]
-            OpenAI[OpenAI API <br> 大語言模型]
+            OpenAI["OpenAI (SDK相容) API <br> 大語言模型"]
         end
     end
     subgraph Host ["主機層 (Host Layer)"]
@@ -66,7 +65,7 @@ graph TD
 
         %% 平行子模組
         Server <-->|1. 狀態維持| Session[會話管理模組 <br> Session]
-        Server <-->|2. 規則讀取| Policy[策略載入模組 <br> Policy]
+        Server <-->|2. 規則讀取| Contexts[上下文管理模組 <br> Contexts]
         Server <-->|3. 資源監控| Breaker[資源熔斷模組 <br> Circuit Breaker]
         Server <-->|4. 工具審查| Gatekeeper[工具守門模組 <br> Tool Gatekeeper]
         Server <-->|5. 格式確保| Validator[輸出驗證模組 <br> Output Validator]
@@ -75,10 +74,9 @@ graph TD
         Classifier -->|分類結果| PolicyEnforcer["政策執行模組 <br> enforce_policy()"]
         PolicyEnforcer -->|允許| CitationVerifier["引用驗證模組 <br> verify_citations()"]
         CitationVerifier -->|驗證通過| Validator
-        CitationVerifier -->|驗證失敗或衝突| PolicyEnforcer
 
         Session -.-> Logger
-        Policy -.-> Logger
+        Contexts -.-> Logger
         Breaker -.-> Logger
         Gatekeeper -.->|記錄攔截與允許| Logger
         Validator -.->|記錄驗證結果| Logger
@@ -94,3 +92,38 @@ graph TD
     Client <-- "HTTP 請求 (Health/Session/Chat)" --> Server
     Server <--> External
 ```
+## 單輪對話流程
+
+標註淺藍色為新增之模組功能，其餘為常規AI Agent的對話流程
+
+```mermaid
+flowchart TD
+    U[使用者    ]
+    U --> H["Host / Server：收到 POST /chat"]
+    H --> C("取得 context profile\n[模組1：ConfigLoader]")
+    C --> B("資源與預算檢查\n[模組7 Resource/Circuit Breaker]")
+    B --> O["呼叫 OpenAI（可能回傳 tool_calls）"]
+    O --> G("檢查模型欲呼叫之工具\n[模組4 Tool Governance]")
+    G --> M["MCP Server：執行工具 call_tool()"]
+    M --> V("驗證工具輸出\n[模組2 Output Validation]")
+    V --> CL("內容分類\n[模組6 Content Safety]")
+    CL --> P("政策執行\n[模組6 Dynamic Policy]")
+    P --> VA("驗證最終回覆\n[模組2 Output Validation]")
+    VA --> R["回傳 assistant_response {answer, sources} 給使用者"]
+    R --> L["GovernanceLogger：全程記錄審計事件"]
+
+    %% 樣式定義
+    classDef module fill:#e8f0ff,stroke:#333,stroke-width:1px;
+
+    %% 將所有標註模組編號的節點套用相同樣式
+    class C,B,G,V,CL,P,VA,L module;
+```
+
+模組編號對照：
+
+- 模組1：Context / Policy profile（`host/policies/config_loader.py`）
+- 模組2：Output Validation（`host/validators/output_validator.py`）
+- 模組3：Citation Verification（`host/validators/citation_verifier.py`，在政策驗證或來源核查時使用）
+- 模組4：Tool Governance（`host/validators/tool_gatekeeper.py`，模型發出工具呼叫時檢查）
+- 模組6：Content Safety / Dynamic Policy（`host/validators/content_classifier.py` 與 `host/policies/policy_enforcer.py`，在最終回覆前分類與依照政策決定是否輸出）
+- 模組7：Resource / Cost Circuit Breaker（`host/validators/resource_circuit_breaker.py`，整輪執行中持續檢查資源限制）

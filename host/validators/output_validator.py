@@ -1,3 +1,7 @@
+"""
+Module 2: Output Validator — 輸出結構驗證
+驗證不同類型輸出的結構是否符合預期。
+"""
 from __future__ import annotations
 
 from enum import Enum

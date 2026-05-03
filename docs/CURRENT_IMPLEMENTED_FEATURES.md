@@ -22,24 +22,15 @@
 - 每筆 session 會保存 `session_id`、`context_id`、`created_at`、`updated_at` 與 `messages`。
 - 目前支援建立會話、查詢會話、列出會話、切換 context 與追加訊息。
 
-### 1.2 Policy / Context（模組 1）
+### 1.2 Context（模組 1）
 
 - `config.yaml` 定義目前的 context 與政策內容。
-- `config.yaml` 支援全域 `resource_limits`（token、模型呼叫次數、工具次數、工具頻率、總延遲毫秒）。
-- 目前有 `general`、`esg`、`code_dev` 三個 context。
+- `config.yaml` 支援全域 `resource_limits` (模組 7)，以及動態政策 (模組 6)。
 - 每個 context 包含 `identity`、`system_prompt`、`absolute_rules` 與 `tool_scope`，也可選擇覆寫 `resource_limits`。
 - `host/policies/config_loader.py` 負責從 repository root 讀取設定並回傳對應 profile。
 - `host/server.py` 會根據 session 的 `context_id` 套用對應的 system prompt。
 
-### 1.3 Tool Governance（模組 4）
-
-- `host/validators/tool_gatekeeper.py` 實作 `secure_tool_call()`。
-- 會檢查工具是否在 context 的允許清單中。
-- 會在 `read-only` 模式下檢測參數是否含有寫入或修改意圖。
-- 若 `context_id` 不存在，工具呼叫會被拒絕。
-- `host/server.py` 在每次工具呼叫前都會先走治理檢查。
-
-### 1.4 Output Validation（模組 2）
+### 1.3 Output Validation（模組 2）
 
 - `host/validators/output_validator.py` 實作 `validate_output_structure()`。
 - 目前支援四種 schema：`TOOL_RESULT`、`AGENT_RESPONSE`、`PEER_REVIEW`、`AUDIT_REPORT`。
@@ -47,14 +38,21 @@
 - `AGENT_RESPONSE` 用於驗證助理輸出，現行格式以 `answer` + `sources` 為主，也保留對舊欄位 `content` 的相容。
 - `PEER_REVIEW` 與 `AUDIT_REPORT` 則對應後續可擴充的治理資料格式。
 
-### 1.5 Citation Verification（模組 3）
+### 1.4 Citation Verification（模組 3）
 
 - `host/server.py` 的系統提示已明確要求模型使用 `[citation:1]` 格式標記回答中的引用。
 - `parse_structured_assistant_output()` 會解析最終模型輸出，提取 `answer` 和 `sources` 欄位。
-- 結構化輸出格式為 `{"answer": "...", "sources": [{"source_id": "...", "tool_name": "..."}]}`。
 - `host/server.py` 在 `/chat` 流程最後階段對 `AGENT_RESPONSE` 進行結構驗證，確保 answer 與 sources 完整。
-- `host/audits/governance_logger.py` 已支援記錄 `CITATION_VERIFICATION_PASS`、`CITATION_VERIFICATION_PARTIAL`、`CITATION_VERIFICATION_FAIL` 三種引用驗證結果。
-- 完整的引用驗證邏輯（對比主張與來源、判定可追溯性）留待後續實作。
+- 初步完成針對MCP Tool的引用檢查，完整的引用驗證邏輯（對比外部主張與來源、判定可追溯性）留待後續實作。
+
+### 1.5 Tool Governance（模組 4）
+
+- `host/validators/tool_gatekeeper.py` 實作 `secure_tool_call()`。
+- 會檢查工具是否在 context 的允許清單中。
+- 會在 `read-only` 模式下檢測參數是否含有寫入或修改意圖。
+- 若 `context_id` 不存在，工具呼叫會被拒絕。
+- `host/server.py` 在每次工具呼叫前都會先走治理檢查。
+
 
 ### 1.6 Audit / Logging
 
@@ -103,31 +101,40 @@
 
 ## 4. OpenAI / Tool Execution 流程
 
-- `host/server.py` 會先向 MCP server 讀取工具清單，再轉成 OpenAI function tools 格式。
-- 對話流程支援多輪工具呼叫，模型可先決定要用哪些工具，再由系統執行並回填結果。
-- 工具執行後會再經過輸出結構驗證，避免無效結果直接進入對話。
-- 最終模型輸出會經過結構化解析，整理成 `assistant_response = {answer, sources}`，並再做 `AGENT_RESPONSE` schema 驗證。
-- 若工具呼叫或輸出驗證失敗，系統會回填政策違規或驗證失敗訊息，而不是直接中斷整個對話。
-- 若 token、工具次數、工具頻率或總延遲超過 `resource_limits`，流程會觸發熔斷並回傳終止訊息。
+- 於每次執行單輪對話時，`host/server.py` 會透過 `fastmcp.Client(MCP_SERVER_URL).list_tools()` 即時載入 MCP 可用工具，並由 `mcp_tools_to_openai_tools()` 轉為 OpenAI 函式呼叫（function-like）描述。
+- 使用 OpenAI 的函式呼叫模式：透過 `call_openai_chat()` 對 `OpenAI.chat.completions.create(...)` 發出請求（包含 `tools`、`tool_choice="auto"` 與 `temperature=0`），模型可能回傳 `tool_calls`。
+- 系統支援多輪工具呼叫循環：當模型發出 `tool_calls` 時，server 會先將助理的工具呼叫意圖記錄到對話（含 `tool_call.id` 與參數），再逐一執行對應 MCP 工具（`mcp_client.call_tool()`）。
+- 在執行工具前會以 `secure_tool_call()` 做治理檢查；不允許的呼叫會被封鎖並回填一個 policy error 給模型以繼續後續流程（不直接中斷對話）。
+- 工具執行結果會用 `format_tool_result()` 格式化（包含 `[工具來源 ID: ...]` 標記），並以 `validate_output_structure(..., SchemaType.TOOL_RESULT)` 驗證工具輸出結構；若驗證失敗，會回填 `output_validation_failed` 的 tool 訊息給模型。
+- 在模型不再要求工具後，最終回覆會由 `parse_structured_assistant_output()` 解析為 `{"answer": ..., "sources": [...]}`，接著執行內容分類（`classify_content()`）與政策套用（`enforce_policy()`）。
+- 若政策判定為拒絕（blocked），`/chat` 流程會回傳一個被政策阻擋的結構化回覆；若政策要求修改（例如加入免責聲明），會將 `modified_text` 串接到最終 `answer` 前。
+- 最後對整體回覆再做一次 `validate_output_structure(..., SchemaType.AGENT_RESPONSE)` 驗證，並把驗證結果寫入稽核日誌。
+- 資源與成本監控：`ResourceCircuitBreaker` 監控指標包含 `total_tokens`、`model_calls`、`tool_calls`、`tool_calls_by_name` 與經過時間（elapsed ms）；若超過 `resource_limits`（例如 token、工具頻率或總延遲），會丟出 `ResourceLimitExceeded`，記錄 `CIRCUIT_BREAKER_TRIGGERED` 審計事件，並返回終止訊息給呼叫端。
+- 本機 MCP server 支援自動啟動（由 `lifespan` 在背景 process 啟動 `mcp.run()` 當 `AUTO_START_LOCAL_MCP` 為 true），`wait_until_mcp_ready()` 會確認 MCP 可以呼叫 `list_tools()` 後才繼續。
 
 ## 5. 測試覆蓋
 
-- `tests/test_phase1_mvp.py` 已覆蓋工具守門、輸出驗證與治理稽核。
-- 測試重點包含允許 / 拒絕工具呼叫、schema 驗證結果，以及稽核摘要與拒絕查詢。
-- `tests/test_resource_circuit_breaker.py` 已覆蓋 token 超限、工具頻率超限、延遲超限與 profile 門檻覆寫。
-- `tests/test_citation_verifier.py` 目前保留 citation verifier 相關測試案例檔。
+- 單元與整合測試位於 `tests/`：主要測試檔案包括
+  - `tests/test_phase1_mvp.py`：驗證 `secure_tool_call()`、`validate_output_structure()` 與 `GovernanceLogger` 等核心治理邏輯。
+  - `tests/test_resource_circuit_breaker.py`：驗證 `ResourceCircuitBreaker` 在 token、工具頻率與延遲超限場景會正確拋出 `ResourceLimitExceeded`，以及 `build_resource_budget()` 會優先採用 profile 的限額設定。
+  - `tests/test_module6_integration.py`：Module 6 的端到端整合測試（分類 → 政策 → 阻擋/修改 → 審計），以 `pytest.mark.asyncio` 執行非同步流程驗證。
+  - `tests/test_content_classifier.py`、`tests/test_policy_enforcer.py`、`tests/test_citation_verifier.py`：分別覆蓋內容分類、政策執行器與引用驗證的預期行為。
+- 測試策略：單元測試覆蓋治理與驗證邏輯，整合測試模擬分類→政策→稽核的完整流程；MCP 工具端的簡易整合可透過 `mcpServer.app.mcp`（`get_weather`）在本地做驗證或使用 `host_flow_cli.py` 進行端到端呼叫測試。
 
 ## 6. 實作對應文件
-
-- 若要快速對照程式碼，可先看：
-  - `host/server.py`
-  - `host/session.py`
-  - `host/validators/tool_gatekeeper.py`
-  - `host/validators/output_validator.py`
-  - `host/validators/resource_circuit_breaker.py`
-  - `host/audits/governance_logger.py`
-  - `host/policies/config_loader.py`
-  - `mcpServer/app.py`
-  - `mcpServer/response.py`
-  - `client/cli.py`
+ - 若要快速對照程式碼，可先看：
+   - `host/server.py`
+   - `host/session.py`
+   - `host/validators/tool_gatekeeper.py`
+   - `host/validators/output_validator.py`
+   - `host/validators/resource_circuit_breaker.py`
+   - `host/audits/governance_logger.py`
+   - `host/validators/content_classifier.py`
+   - `host/validators/citation_verifier.py`
+   - `host/policies/config_loader.py`
+   - `host/policies/policy_enforcer.py`
+   - `mcpServer/app.py`
+   - `mcpServer/response.py`
+   - `client/cli.py`
+   - `config.yaml`（上下文與政策預設）
  

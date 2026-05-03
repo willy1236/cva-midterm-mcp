@@ -1,3 +1,7 @@
+"""
+Module 7: Resource Circuit Breaker — 資源電路斷路器
+Resource Circuit Breaker 負責監控和限制資源使用，防止系統過載。
+"""
 from __future__ import annotations
 
 import os

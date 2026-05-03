@@ -1,3 +1,7 @@
+"""
+Module 4: Tool Gatekeeper — 工具調用守門員
+根據 context 的工具使用政策決定是否允許工具調用，特別是對於具有寫入/修改操作的工具，根據 context 的設定進行嚴格控制。
+"""
 from __future__ import annotations
 
 from typing import Any
