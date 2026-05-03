@@ -94,7 +94,7 @@ graph TD
 ```
 ## 單輪對話流程
 
-標註淺藍色為新增之模組功能，其餘為常規AI Agent的對話流程
+標註灰藍色為新增之模組功能，其餘為常規AI Agent的對話流程
 
 ```mermaid
 flowchart TD
@@ -113,7 +113,7 @@ flowchart TD
     R --> L["GovernanceLogger：全程記錄審計事件"]
 
     %% 樣式定義
-    classDef module fill:#e8f0ff,stroke:#333,stroke-width:1px;
+    classDef module fill:#1c2128,stroke:#444c56,color:#adbac7,stroke-width:1px;
 
     %% 將所有標註模組編號的節點套用相同樣式
     class C,B,G,V,CL,P,VA,L module;
