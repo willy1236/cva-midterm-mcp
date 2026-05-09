@@ -50,6 +50,9 @@
       border-bottom: 1px solid #f1f5f9;
       cursor: pointer;
       font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
     .session-item:hover {
@@ -61,6 +64,18 @@
       font-weight: 600;
     }
 
+    .delete-btn {
+      background: transparent;
+      border: none;
+      color: #ef4444;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .delete-btn:hover {
+      text-decoration: underline;
+    }
+
     .main {
       flex: 1;
       display: flex;
@@ -69,7 +84,7 @@
 
     .topbar {
       display: flex;
-      gap: 8px;
+      gap: 12px;
       padding: 10px;
       background: white;
       border-bottom: 1px solid #e5e7eb;
@@ -127,12 +142,12 @@
     }
 
     .context-box {
-      font-size: 12px;
-      color: #374151;
       margin-left: auto;
       display: flex;
       gap: 6px;
       align-items: center;
+      font-size: 12px;
+      color: #374151;
     }
   </style>
 </head>
@@ -164,6 +179,7 @@
         base_url: http://127.0.0.1:8010
       </div>
 
+      <!-- 🔥 context switch restored -->
       <div class="context-box">
         <span>Context:</span>
         <input id="contextId" style="width:140px" />
@@ -205,9 +221,9 @@ async function createSession() {
   const data = await res.json();
   sessionId = data.data.session_id;
 
-  addMsg('assistant', `Created session: ${sessionId} (context: ${context_id})`);
-
   document.getElementById('contextId').value = context_id;
+
+  addMsg('assistant', `Created session: ${sessionId} (context: ${context_id})`);
   loadSessions();
 }
 
@@ -222,15 +238,39 @@ async function loadSessions() {
     const div = document.createElement('div');
     div.className = 'session-item' + (s.session_id === sessionId ? ' active' : '');
 
-    div.textContent = `${s.session_id}\ncontext: ${s.context_id}`;
+    const left = document.createElement('div');
+    left.textContent = `${s.session_id} (ctx: ${s.context_id})`;
 
-    div.onclick = () => {
+    left.onclick = () => {
       sessionId = s.session_id;
       document.getElementById('contextId').value = s.context_id;
       loadChatPreview(s);
       loadSessions();
     };
 
+    const del = document.createElement('button');
+    del.className = 'delete-btn';
+    del.textContent = 'delete';
+
+    del.onclick = async (e) => {
+      e.stopPropagation();
+
+      if (!confirm('確定要刪除這個 session 嗎？')) return;
+
+      await fetch(baseUrl + '/session/' + s.session_id, {
+        method: 'DELETE'
+      });
+
+      if (sessionId === s.session_id) {
+        sessionId = null;
+        document.getElementById('chat').innerHTML = '';
+      }
+
+      loadSessions();
+    };
+
+    div.appendChild(left);
+    div.appendChild(del);
     list.appendChild(div);
   });
 }
@@ -272,7 +312,18 @@ async function sendMessage() {
   });
 
   const data = await res.json();
-  addMsg('assistant', data.data.assistant_response.answer);
+  const resp = data.data.assistant_response;
+
+  let text = resp.answer;
+
+  if (resp.sources && resp.sources.length > 0) {
+    text += "\n\n--- sources ---\n";
+    resp.sources.forEach(s => {
+      text += `#${s.source_id} (${s.tool_name})\n`;
+    });
+  }
+
+  addMsg('assistant', text);
 }
 
 window.onload = loadSessions;
