@@ -12,6 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastmcp import Client
 from mcp.types import CallToolResult, Tool
@@ -30,6 +31,10 @@ from host.validators.resource_circuit_breaker import (
     build_resource_budget,
 )
 from host.validators.tool_gatekeeper import secure_tool_call
+
+env_path = Path(__file__).resolve().parent.parent / ".env"
+print(env_path)
+load_dotenv(dotenv_path=env_path)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
