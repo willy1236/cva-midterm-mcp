@@ -64,16 +64,48 @@
       font-weight: 600;
     }
 
-    .delete-btn {
-      background: transparent;
-      border: none;
-      color: #ef4444;
-      cursor: pointer;
-      font-size: 12px;
+    .session-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
     }
 
-    .delete-btn:hover {
-      text-decoration: underline;
+    .delete-btn, .rename-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 4px;
+    }
+
+    .delete-btn { color: #ef4444; }
+    .rename-btn { color: #6b7280; }
+
+    .delete-btn:hover { text-decoration: underline; }
+    .rename-btn:hover { color: #111827; }
+
+    .session-name {
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .session-sub {
+      font-size: 11px;
+      color: #9ca3af;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rename-input {
+      font-size: 13px;
+      padding: 2px 6px;
+      border: 1px solid #93c5fd;
+      border-radius: 4px;
+      width: 100%;
+      box-sizing: border-box;
     }
 
     .main {
@@ -161,7 +193,8 @@
   <div class="sidebar">
     <h3>Sessions</h3>
 
-    <div style="padding:10px; display:flex; gap:6px;">
+    <div style="padding:10px; display:flex; flex-direction:column; gap:6px;">
+      <input id="newDisplayName" placeholder="名稱（選填）" />
       <input id="newContext" placeholder="context id" />
       <button onclick="createSession()">New</button>
     </div>
@@ -211,19 +244,21 @@ function addMsg(role, text) {
 
 async function createSession() {
   const context_id = document.getElementById('newContext').value || 'general';
+  const display_name = document.getElementById('newDisplayName').value.trim();
 
   const res = await fetch(baseUrl + '/session/start', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({context_id})
+    body: JSON.stringify({context_id, display_name})
   });
 
   const data = await res.json();
   sessionId = data.data.session_id;
 
   document.getElementById('contextId').value = context_id;
+  document.getElementById('newDisplayName').value = '';
 
-  addMsg('assistant', `Created session: ${sessionId} (context: ${context_id})`);
+  addMsg('assistant', `Created session: ${display_name || sessionId} (context: ${context_id})`);
   loadSessions();
 }
 
@@ -239,7 +274,19 @@ async function loadSessions() {
     div.className = 'session-item' + (s.session_id === sessionId ? ' active' : '');
 
     const left = document.createElement('div');
-    left.textContent = `${s.session_id} (ctx: ${s.context_id})`;
+    left.style.overflow = 'hidden';
+    left.style.flex = '1';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'session-name';
+    nameEl.textContent = s.display_name || s.session_id.slice(0, 8) + '...';
+
+    const subEl = document.createElement('div');
+    subEl.className = 'session-sub';
+    subEl.textContent = `ctx: ${s.context_id}`;
+
+    left.appendChild(nameEl);
+    left.appendChild(subEl);
 
     left.onclick = () => {
       sessionId = s.session_id;
@@ -248,29 +295,62 @@ async function loadSessions() {
       loadSessions();
     };
 
+    const actions = document.createElement('div');
+    actions.className = 'session-actions';
+
+    const ren = document.createElement('button');
+    ren.className = 'rename-btn';
+    ren.textContent = '✎';
+    ren.title = '重新命名';
+
+    ren.onclick = async (e) => {
+      e.stopPropagation();
+      const current = s.display_name || '';
+      const input = document.createElement('input');
+      input.className = 'rename-input';
+      input.value = current;
+      left.replaceChild(input, nameEl);
+      input.focus();
+      input.select();
+
+      const commit = async () => {
+        const newName = input.value.trim();
+        if (newName === current) { left.replaceChild(nameEl, input); return; }
+        await fetch(baseUrl + '/session/rename', {
+          method: 'PATCH',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({session_id: s.session_id, display_name: newName})
+        });
+        loadSessions();
+      };
+
+      input.onblur = commit;
+      input.onkeydown = (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+        if (ev.key === 'Escape') { left.replaceChild(nameEl, input); }
+      };
+    };
+
     const del = document.createElement('button');
     del.className = 'delete-btn';
-    del.textContent = 'delete';
+    del.textContent = '✕';
+    del.title = '刪除';
 
     del.onclick = async (e) => {
       e.stopPropagation();
-
       if (!confirm('確定要刪除這個 session 嗎？')) return;
-
-      await fetch(baseUrl + '/session/' + s.session_id, {
-        method: 'DELETE'
-      });
-
+      await fetch(baseUrl + '/session/' + s.session_id, { method: 'DELETE' });
       if (sessionId === s.session_id) {
         sessionId = null;
         document.getElementById('chat').innerHTML = '';
       }
-
       loadSessions();
     };
 
+    actions.appendChild(ren);
+    actions.appendChild(del);
     div.appendChild(left);
-    div.appendChild(del);
+    div.appendChild(actions);
     list.appendChild(div);
   });
 }
