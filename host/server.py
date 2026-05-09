@@ -532,7 +532,7 @@ async def health() -> dict[str, Any]:
 @app.post("/session/start", status_code=201)
 async def session_start(payload: SessionStartRequest) -> dict[str, Any]:
     context_id = payload.context_id.strip() or "general"
-    session = state.store.create(context_id=context_id)
+    session = state.store.create(context_id=context_id, display_name=payload.display_name.strip())
     return {"ok": True, "data": session}
 
 

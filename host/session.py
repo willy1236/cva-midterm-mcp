@@ -35,13 +35,14 @@ class SessionStore:
             encoding="utf-8",
         )
 
-    def create(self, *, context_id: str = "general") -> dict[str, Any]:
+    def create(self, *, context_id: str = "general", display_name: str = "") -> dict[str, Any]:
         with self._lock:
             session_id = str(uuid4())
             now = datetime.now(UTC).isoformat()
             record: dict[str, Any] = {
                 "session_id": session_id,
                 "context_id": context_id,
+                "display_name": display_name,
                 "created_at": now,
                 "updated_at": now,
                 "messages": [],
@@ -95,6 +96,7 @@ class SessionStore:
 
 class SessionStartRequest(BaseModel):
     context_id: str = Field(default="general")
+    display_name: str = Field(default="")
 
 
 class SessionContextRequest(BaseModel):
