@@ -14,6 +14,8 @@ from uuid import uuid4
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastmcp import Client
 from mcp.types import CallToolResult, Tool
 from openai import OpenAI
@@ -33,7 +35,6 @@ from host.validators.resource_circuit_breaker import (
 from host.validators.tool_gatekeeper import secure_tool_call
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
-print(env_path)
 load_dotenv(dotenv_path=env_path)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
@@ -516,6 +517,12 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="User Host MCP Server", lifespan=lifespan)
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/")
+async def homepage():
+    return FileResponse("static/index.html")
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
