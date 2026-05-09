@@ -14,8 +14,8 @@ from uuid import uuid4
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastmcp import Client
 from mcp.types import CallToolResult, Tool
 from openai import OpenAI
@@ -558,6 +558,15 @@ async def session_get(session_id: str) -> dict[str, Any]:
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
     return {"ok": True, "data": session}
+
+
+@app.delete("/session/{session_id}", status_code=200)
+async def session_delete(session_id: str) -> dict[str, Any]:
+    try:
+        state.store.delete(session_id.strip())
+    except KeyError:
+        raise HTTPException(status_code=404, detail="session not found")
+    return {"ok": True}
 
 
 @app.get("/sessions")

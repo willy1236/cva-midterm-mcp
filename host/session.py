@@ -70,6 +70,13 @@ class SessionStore:
             record["updated_at"] = datetime.now(UTC).isoformat()
             self._save()
 
+    def delete(self, session_id: str) -> None:
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("session not found")
+            del self._sessions[session_id]
+            self._save()
+
     def append_message(self, session_id: str, message: dict[str, Any]) -> None:
         with self._lock:
             record = self._sessions.get(session_id)
