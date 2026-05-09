@@ -24,7 +24,7 @@ from openai.types.chat.chat_completion import ChatCompletion
 from host.audits.governance_logger import AuditAction, AuditEntry, GovernanceLogger
 from host.policies.config_loader import get_context_profile
 from host.policies.policy_enforcer import enforce_policy
-from host.session import ChatRequest, SessionContextRequest, SessionStartRequest, SessionStore
+from host.session import ChatRequest, SessionContextRequest, SessionRenameRequest, SessionStartRequest, SessionStore
 from host.validators.content_classifier import classify_content
 from host.validators.output_validator import SchemaType, validate_output_structure
 from host.validators.resource_circuit_breaker import (
@@ -557,6 +557,16 @@ async def session_get(session_id: str) -> dict[str, Any]:
     session = state.store.get(session_id.strip())
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
+    return {"ok": True, "data": session}
+
+
+@app.patch("/session/rename")
+async def session_rename(payload: SessionRenameRequest) -> dict[str, Any]:
+    try:
+        state.store.rename(payload.session_id.strip(), payload.display_name.strip())
+    except KeyError:
+        raise HTTPException(status_code=404, detail="session not found")
+    session = state.store.get(payload.session_id.strip())
     return {"ok": True, "data": session}
 
 

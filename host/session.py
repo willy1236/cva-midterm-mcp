@@ -71,6 +71,15 @@ class SessionStore:
             record["updated_at"] = datetime.now(UTC).isoformat()
             self._save()
 
+    def rename(self, session_id: str, display_name: str) -> None:
+        with self._lock:
+            record = self._sessions.get(session_id)
+            if not isinstance(record, dict):
+                raise KeyError("session not found")
+            record["display_name"] = display_name
+            record["updated_at"] = datetime.now(UTC).isoformat()
+            self._save()
+
     def delete(self, session_id: str) -> None:
         with self._lock:
             if session_id not in self._sessions:
@@ -97,6 +106,11 @@ class SessionStore:
 class SessionStartRequest(BaseModel):
     context_id: str = Field(default="general")
     display_name: str = Field(default="")
+
+
+class SessionRenameRequest(BaseModel):
+    session_id: str
+    display_name: str
 
 
 class SessionContextRequest(BaseModel):
