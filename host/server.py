@@ -33,7 +33,6 @@ from host.validators.resource_circuit_breaker import (
 from host.validators.tool_gatekeeper import secure_tool_call
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
-print(env_path)
 load_dotenv(dotenv_path=env_path)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
