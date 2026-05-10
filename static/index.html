@@ -195,7 +195,7 @@
 
     <div style="padding:10px; display:flex; flex-direction:column; gap:6px;">
       <input id="newDisplayName" placeholder="名稱（選填）" />
-      <input id="newContext" placeholder="context id" />
+      <input id="newContext" placeholder="context" />
       <button onclick="createSession()">New</button>
     </div>
 
@@ -207,18 +207,17 @@
   <!-- MAIN -->
   <div class="main">
 
-    <div class="topbar">
-      <div style="font-size:12px; color:#6b7280;">
-        base_url: http://127.0.0.1:8010
-      </div>
-
-      <!-- 🔥 context switch restored -->
-      <div class="context-box">
-        <span>Context:</span>
-        <input id="contextId" style="width:140px" />
+    <div class="context-box">
+        <span>切換AI助手:</span>
+        <select id="contextId" style="width:150px; padding: 6px; border: 1px solid #d1d5db; border-radius: 6px; outline: none;">
+          <option value="general">general</option>
+          <option value="code_dev">code_dev</option>
+          <option value="esg">esg</option>
+          <option value="creative_writer">creative_writer</option>
+          <option value="medical_assistant">medical_assistant</option>
+        </select>
         <button onclick="switchContext()">Apply</button>
       </div>
-    </div>
 
     <div id="chat" class="chat"></div>
 
