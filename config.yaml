@@ -98,3 +98,26 @@ contexts:
         legal_violation: "blocked"
       requires_disclaimer:
         - "unauthorized_operations"
+  creative_writer:
+    identity: "Creative"
+    system_prompt: "你是專注於創意寫作與故事發想的 AI 夥伴，幫助使用者激發靈感。"
+    absolute_rules:
+      - "拒絕生成任何違反安全規範（如極端血腥、極端色情、極端暴力）的內容。"
+      - "若使用者要求完全複製或續寫受版權保護的現代作品，需告知限制。"
+      - "保持角色的連貫性與對話的趣味性。"
+    tool_scope:
+      allowed:
+      mode: "generative"
+    policy:
+      policy_level: "relaxed"
+      risk_score_threshold:
+        safe: 0.30
+        sensitive: 0.70
+        risky: 0.90
+      content_type_policy:
+        nsfw: "blocked"
+        copyrighted_material: "restricted"
+        fictional_violence: "restricted"
+      requires_disclaimer:
+        - "unauthorized_operations"
+
