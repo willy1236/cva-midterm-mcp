@@ -10,6 +10,18 @@ from typing import Any
 
 import yaml
 from cachetools import TTLCache, cached
+from pydantic import BaseModel, Field
+
+
+class ContextProfile(BaseModel):
+    context_id: str
+    identity: str = "Unknown"
+    system_prompt: str = ""
+    absolute_rules: list[Any] = Field(default_factory=list)
+    tool_scope: dict[str, Any] = Field(default_factory=dict)
+    resource_limits: dict[str, Any] = Field(default_factory=dict)
+    policy_rules: dict[str, Any] = Field(default_factory=dict)
+    policy_version: str = "unknown"
 
 _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
 config_cache = TTLCache(maxsize=1, ttl=600)  # 10 minutes cache for config loading
@@ -39,7 +51,7 @@ def load_constraint_config() -> dict[str, Any]:
     return raw
 
 
-def get_context_profile(context_id: str) -> dict[str, Any]:
+def get_context_profile(context_id: str) -> ContextProfile:
     config = load_constraint_config()
     contexts = config.get("contexts", {})
     default_context = config.get("default_context", "general")
@@ -75,13 +87,13 @@ def get_context_profile(context_id: str) -> dict[str, Any]:
 
     policy_rules = _merge_dicts(policy_defaults, policy_overrides)
 
-    return {
-        "context_id": selected,
-        "identity": profile.get("identity", "Unknown"),
-        "system_prompt": profile.get("system_prompt", ""),
-        "absolute_rules": profile.get("absolute_rules", []),
-        "tool_scope": profile.get("tool_scope", {}),
-        "resource_limits": resource_limits,
-        "policy_rules": policy_rules,
-        "policy_version": config.get("version", "unknown"),
-    }
+    return ContextProfile(
+        context_id=selected,
+        identity=profile.get("identity", "Unknown"),
+        system_prompt=profile.get("system_prompt", ""),
+        absolute_rules=profile.get("absolute_rules", []),
+        tool_scope=profile.get("tool_scope", {}),
+        resource_limits=resource_limits,
+        policy_rules=policy_rules,
+        policy_version=config.get("version", "unknown"),
+    )

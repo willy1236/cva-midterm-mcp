@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from host.policies.config_loader import ContextProfile
 from host.validators.resource_circuit_breaker import (
     ResourceBudget,
     ResourceCircuitBreaker,
@@ -66,15 +67,16 @@ def test_triggered_when_latency_exceeded() -> None:
 
 def test_build_resource_budget_prefers_profile_limits(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOST_CB_MAX_TOTAL_TOKENS", "999")
-    profile_data = {
-        "resource_limits": {
+    profile_data = ContextProfile(
+        context_id="test",
+        resource_limits={
             "max_total_tokens": 120,
             "max_model_calls": 3,
             "max_tool_calls": 4,
             "max_tool_calls_per_tool": 2,
             "max_total_latency_ms": 500,
-        }
-    }
+        },
+    )
 
     budget = build_resource_budget(profile_data)
     assert budget.max_total_tokens == 120

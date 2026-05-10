@@ -7,7 +7,10 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from host.policies.config_loader import ContextProfile
 
 
 def _as_non_negative_int(value: Any, default: int) -> int:
@@ -89,7 +92,7 @@ class ResourceCircuitBreaker:
             raise ResourceLimitExceeded(reasons, self.metrics(now=now))
 
 
-def build_resource_budget(profile_data: dict[str, Any] | None = None) -> ResourceBudget:
+def build_resource_budget(profile_data: ContextProfile | None = None) -> ResourceBudget:
     env_defaults = {
         "max_total_tokens": _as_non_negative_int(os.getenv("HOST_CB_MAX_TOTAL_TOKENS"), 8000),
         "max_model_calls": _as_non_negative_int(os.getenv("HOST_CB_MAX_MODEL_CALLS"), 8),
@@ -98,11 +101,7 @@ def build_resource_budget(profile_data: dict[str, Any] | None = None) -> Resourc
         "max_total_latency_ms": _as_non_negative_int(os.getenv("HOST_CB_MAX_TOTAL_LATENCY_MS"), 30000),
     }
 
-    profile_limits: dict[str, Any] = {}
-    if isinstance(profile_data, dict):
-        maybe_limits = profile_data.get("resource_limits", {})
-        if isinstance(maybe_limits, dict):
-            profile_limits = maybe_limits
+    profile_limits: dict[str, Any] = profile_data.resource_limits if profile_data is not None else {}
 
     effective = {**env_defaults, **profile_limits}
     return ResourceBudget(

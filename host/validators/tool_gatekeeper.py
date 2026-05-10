@@ -44,7 +44,7 @@ def secure_tool_call(
     except KeyError:
         return False, f"Unknown context_id: {context_id}"
 
-    tool_scope = profile.get("tool_scope", {})
+    tool_scope = profile.tool_scope
     allowed_tools = tool_scope.get("allowed") or []
     mode = tool_scope.get("mode", "read-only")
 
