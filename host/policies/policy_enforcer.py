@@ -19,7 +19,7 @@ class PolicyLevel(str):
     SENSITIVE = "sensitive"
     RISKY = "risky"
 
-disclaimers = []
+
 async def enforce_policy(
     classification: ClassificationResult,
     context_id: str,
@@ -57,29 +57,29 @@ async def enforce_policy(
     policy_rules = get_policy_rules(context_id, profile_data)
     policy_level = policy_rules.get("policy_level", PolicyLevel.GENERAL)
 
-
     # 決定是否阻擋
     if _should_block(classification, policy_rules):
         # 1. 建立基礎阻擋原因
         reason = f"內容被分類為 {classification.classification.value}，違反 {policy_level} 政策"
-    
+
         if classification.blocking_reasons:
             reason += f"。原因：{'; '.join(classification.blocking_reasons)}"
-        
+
         # 2. 判斷並收集相應的免責聲明/警告
+        disclaimers = []
         if "unauthorized_operations" in classification.content_types:
             disclaimers.append("【風險警告】本操作涉及潛在未授權範圍，請確保合規使用。")
         if "financial" in classification.content_types:
             disclaimers.append("【免責聲明】本內容涉及財務資訊，僅供參考，不構成投資建議。")
         if "medical" in classification.content_types:
             disclaimers.append("【免責聲明】本內容涉及醫療資訊，不替代專業醫療意見。")
-        
+
             # 3. 將免責聲明附加到阻擋回覆中，一併呈現給使用者
         if disclaimers:
             # 使用換行符號將阻擋原因與免責聲明隔開，提升閱讀體驗
             reason += "\n\n" + "\n".join(disclaimers)
-        
-    # 執行後續的阻擋動作，例如：
+
+        # 執行後續的阻擋動作，例如：
     # return reason, block_status=True
         return {
             "allowed": False,
@@ -161,23 +161,8 @@ def apply_policy_mitigation(
         修改後的文本前綴或免責聲明字符串
     """
 
-    if classification.classification == ContentClassification.SENSITIVE:
-        if "unauthorized_operations" in classification.content_types:
-            disclaimers.append("【風險警告】本回覆涉及潛在未授權操作，請確保合規使用。")
-        if "financial" in classification.content_types:
-            disclaimers.append("【免責聲明】本回覆涉及財務資訊，僅供參考，不構成投資建議。")
-        if "medical" in classification.content_types:
-            disclaimers.append("【免責聲明】本回覆涉及醫療資訊，不替代專業醫療意見。")
-        if "legal_violation" in classification.content_types:
-            disclaimers.append("【警告】本回覆涉及潛在法律風險，請謹慎使用。")
-        if "personal_data" in classification.content_types:
-            disclaimers.append("【警告】本回覆涉及個人資料，請謹慎處理。")
-        if "nsfw" in classification.content_types:
-            disclaimers.append("【警告】本回覆包含成人內容，請謹慎使用。")
-        if "copyrighted_material" in classification.content_types:
-            disclaimers.append("【警告】本回覆包含受版權保護的內容，請確保合法使用。")
-
-    if classification.classification == ContentClassification.RISKY:
+    disclaimers = []
+    if classification.classification == ContentClassification.SENSITIVE or classification.classification == ContentClassification.RISKY:
         if "unauthorized_operations" in classification.content_types:
             disclaimers.append("【風險警告】本回覆涉及潛在未授權操作，請確保合規使用。")
         if "financial" in classification.content_types:
