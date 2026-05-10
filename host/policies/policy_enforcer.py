@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from host.audits.governance_logger import GovernanceLogger
-from host.policies.config_loader import get_context_profile
+from host.policies.config_loader import ContextProfile, get_context_profile
 from host.validators.content_classifier import ClassificationResult, ContentClassification
 
 
@@ -23,7 +23,7 @@ class PolicyLevel(str):
 async def enforce_policy(
     classification: ClassificationResult,
     context_id: str,
-    profile_data: dict[str, Any] | None = None,
+    profile_data: ContextProfile | None = None,
     logger: GovernanceLogger | None = None,
 ) -> dict[str, Any]:
     """
@@ -54,7 +54,6 @@ async def enforce_policy(
 
     if profile_data is None:
         profile_data = get_context_profile(context_id)
-
     policy_rules = get_policy_rules(context_id, profile_data)
     policy_level = policy_rules.get("policy_level", PolicyLevel.GENERAL)
 
@@ -111,7 +110,7 @@ async def enforce_policy(
 
 def get_policy_rules(
     context_id: str,
-    profile_data: dict[str, Any] | None = None,
+    profile_data: ContextProfile | None = None,
 ) -> dict[str, Any]:
     """
     從 context profile 取得已合併好的政策規則。
@@ -120,11 +119,7 @@ def get_policy_rules(
     if profile_data is None:
         profile_data = get_context_profile(context_id)
 
-    policy_rules = profile_data.get("policy_rules", {})
-    if not isinstance(policy_rules, dict):
-        return {}
-
-    return policy_rules
+    return profile_data.policy_rules
 
 
 def apply_policy_mitigation(

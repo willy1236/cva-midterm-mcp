@@ -199,12 +199,10 @@ async def run_single_turn(
         profile_data = get_context_profile(context_id)
 
         system_prompt = SYSTEM_PROMPT
-        if isinstance(profile_data, dict):
-            profile_system_prompt = str(profile_data.get("system_prompt", "")).strip()
-            if profile_system_prompt:
-                system_prompt = f"{SYSTEM_PROMPT}\n\n{profile_system_prompt}"
+        if profile_system_prompt := profile_data.system_prompt.strip():
+            system_prompt = f"{SYSTEM_PROMPT}\n\n{profile_system_prompt}"
 
-        resource_budget = build_resource_budget(profile_data if isinstance(profile_data, dict) else None)
+        resource_budget = build_resource_budget(profile_data)
         circuit_breaker = ResourceCircuitBreaker(resource_budget)
 
         history = session_record.get("messages", [])
