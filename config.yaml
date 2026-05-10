@@ -25,9 +25,6 @@ policy_defaults:
     personal_data: "blocked"
     unauthorized_operations: "blocked"
     legal_violation: "blocked"
-  requires_disclaimer:
-    - "financial"
-    - "medical"
 contexts:
   general:
     identity: "General Assistant"
@@ -64,9 +61,6 @@ contexts:
         personal_data: "blocked"
         unauthorized_operations: "blocked"
         legal_violation: "blocked"
-      requires_disclaimer:
-        - "financial"
-        - "legal_violation"
   code_dev:
     identity: "Senior Python Developer"
     system_prompt: "你是資深開發代理，產出需重視正確性與可維護性。"
@@ -96,8 +90,6 @@ contexts:
         personal_data: "blocked"
         unauthorized_operations: "blocked"
         legal_violation: "blocked"
-      requires_disclaimer:
-        - "unauthorized_operations"
   creative_writer:
     identity: "Creative"
     system_prompt: "你是專注於創意寫作與故事發想的 AI 夥伴，幫助使用者激發靈感。"
