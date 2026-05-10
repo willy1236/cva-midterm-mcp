@@ -193,9 +193,15 @@
   <div class="sidebar">
     <h3>Sessions</h3>
 
-    <div style="padding:10px; display:flex; flex-direction:column; gap:6px;">
+<div style="padding:10px; display:flex; flex-direction:column; gap:6px;">
       <input id="newDisplayName" placeholder="名稱（選填）" />
-      <input id="newContext" placeholder="context" />
+      <select id="newContext" style="padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-family: inherit; font-size: 13px; outline: none;">
+        <option value="general">general</option>
+        <option value="code_dev">code_dev</option>
+        <option value="esg">esg</option>
+        <option value="creative_writer">creative_writer</option>
+        <option value="medical_assistant">medical_assistant</option>
+      </select>
       <button onclick="createSession()">New</button>
     </div>
 
