@@ -144,10 +144,24 @@
 對策原則：所有拒絕、降級與放行決策都需可記錄、可追查、可重現。
 
 ## 八、現況對照與分階段落地
-目前程式庫具備的是最小 MCP 原型與工具調用流程，尚未完整實作治理模組。為避免目標過大，建議分三階段導入：
-1. 第一階段（基線期）：完成模組 1、2、4 的最小可用版。
-2. 第二階段（驗證期）：加入模組 3、5，建立引用與互審流程。
-3. 第三階段（治理期）：補齊模組 6、7，形成完整閉環。
+
+### 8.1 各模組實作狀態
+
+| 模組 | 名稱 | 狀態 | 對應實作 |
+|------|------|------|----------|
+| 模組 1 | 行為指令與角色邊界 | 已完成 | `host/policies/config_loader.py`：`get_context_profile()` 注入情境化身份規則與絕對限制；`config.yaml` 定義各 context 的 identity、system_prompt、absolute_rules 與 tool_scope。 |
+| 模組 2 | 結構化輸出與驗證 | 已完成 | `host/validators/output_validator.py`：`validate_output_structure()` 以 Pydantic 驗證 TOOL_RESULT、AGENT_RESPONSE、PEER_REVIEW、AUDIT_REPORT 四種 schema。 |
+| 模組 3 | 知識接地與引用查核 | 部分完成 | `host/validators/citation_verifier.py`：`verify_citations()` 已實作，可做語意相似度比對、數字衝突偵測與來源定位格式驗證。完整的外部主張對比邏輯（跨段落定位、更高精度語意比對）尚待補充。 |
+| 模組 4 | 外部工具與存取管控 | 已完成 | `host/validators/tool_gatekeeper.py`：`secure_tool_call()` 執行 Tool Scope 白名單檢查與唯讀模式寫入阻斷；每次工具呼叫前均強制通過。 |
+| 模組 5 | 多代理審查機制 | 尚未實作 | `submit_for_peer_review()` 與 Reviewer Agent 流程尚未建立；`PEER_REVIEW` schema 已預先定義於 output_validator.py 備用。 |
+| 模組 6 | 內容安全分類與動態政策 | 已完成 | `host/validators/content_classifier.py`：三層分類（規則 + 關鍵詞 + 相似度）回傳 ClassificationResult；`host/policies/policy_enforcer.py`：`enforce_policy()` 根據 context profile 決定允許/修改/阻擋並回傳對應 audit_action。 |
+| 模組 7 | 資源與成本熔斷 | 已完成 | `host/validators/resource_circuit_breaker.py`：`ResourceCircuitBreaker` 監控 total_tokens、model_calls、tool_calls 與 elapsed_ms；超限時拋出 `ResourceLimitExceeded` 並寫入 CIRCUIT_BREAKER_TRIGGERED 審計事件。 |
+
+### 8.2 剩餘工作
+
+1. **模組 3 補強**：擴充 `citation_verifier.py` 的語意比對精度，支援跨段落來源定位與更嚴格的可追溯性判定。
+2. **模組 5 建立**：實作 `submit_for_peer_review(content, criteria)`、Reviewer Agent 任務模板與審查結論整併策略。
+3. **端到端對照實驗**：依照第五節實驗設計，執行 Baseline / Prompt-only / Full Framework 三組對照，產出可信度與效能報告。
 
 ## 九、預期貢獻
 1. 提供一套可移植、可重複、可量化驗證的代理式 AI 限制框架。
@@ -155,7 +169,8 @@
 3. 讓企業在導入多代理系統時，有一套可解釋、可稽核、可持續調整的信任機制。
 
 ## 十、交付項目
-1. 修正版研究計畫文件（本文件）。
-2. 模組與指標對照表（後續補充）。
-3. 實驗資料與結果報告格式（後續補充）。
-4. 原型實作里程碑與驗證清單（後續補充）。
+1. 修正版研究計畫文件（本文件）。✅
+2. 七模組原型實作（模組 1/2/4/6/7 已完成；模組 3 部分完成；模組 5 待實作）。✅ 進行中
+3. 模組與指標對照表（待補充）。
+4. 實驗資料與結果報告格式（待補充）。
+5. 端到端對照實驗報告（Baseline / Prompt-only / Full Framework）（待執行）。

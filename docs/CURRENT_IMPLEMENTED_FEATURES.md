@@ -5,7 +5,7 @@
 ## 1. Host 層（框架主體）
 
 - `main.py` 啟動整體 host 服務與本機 MCP server。
-- `host/server.py` 提供對外 HTTP API，負責接收 session、chat 與健康檢查請求。
+- `host/server.py` 提供對外 HTTP API，端點包括：`GET /health`（健康檢查）、`POST /session/start`（建立會話）、`POST /session/context`（切換 context）、`GET /session/{session_id}`（查詢會話）、`PATCH /session/rename`（重新命名會話）、`DELETE /session/{session_id}`（刪除會話）、`GET /sessions`（列出所有會話）、`POST /chat`（送出訊息）。
 - `host/server.py` 的 `/chat` 流程會把使用者訊息送入 OpenAI，支援工具呼叫後，回傳結構化的 `assistant_response`。
 - Host 層內還包含以下子模組：
   - `host/session.py`：Session / State 管理。
@@ -19,8 +19,8 @@
 
 - `host/session.py` 定義 `SessionStore` 與 session 相關 request model。
 - 會話資料會持久化到 `host_sessions.json`。
-- 每筆 session 會保存 `session_id`、`context_id`、`created_at`、`updated_at` 與 `messages`。
-- 目前支援建立會話、查詢會話、列出會話、切換 context 與追加訊息。
+- 每筆 session 會保存 `session_id`、`context_id`、`display_name`、`created_at`、`updated_at` 與 `messages`。
+- 目前支援建立會話、查詢會話、列出會話、切換 context、重新命名會話、刪除會話與追加訊息。
 
 ### 1.2 Context（模組 1）
 
@@ -35,7 +35,7 @@
 - `host/validators/output_validator.py` 實作 `validate_output_structure()`。
 - 目前支援四種 schema：`TOOL_RESULT`、`AGENT_RESPONSE`、`PEER_REVIEW`、`AUDIT_REPORT`。
 - `TOOL_RESULT` 用於驗證 MCP 工具執行結果。
-- `AGENT_RESPONSE` 用於驗證助理輸出，現行格式以 `answer` + `sources` 為主，也保留對舊欄位 `content` 的相容。
+- `AGENT_RESPONSE` 用於驗證助理輸出，必填欄位為 `answer`（透過 `AliasChoices` 同時相容舊欄位名稱 `content`）與 `sources`（預設空串列），另有選填欄位 `context_id` 與 `available_tools`。
 - `PEER_REVIEW` 與 `AUDIT_REPORT` 則對應後續可擴充的治理資料格式。
 
 ### 1.4 Citation Verification（模組 3）
@@ -75,7 +75,7 @@
 此模組負責對模型產出的文本進行三層式安全分類，並根據 context 的政策決定是否允許、修改或阻擋輸出；同時與引用驗證與稽核模組整合，形成對外輸出的治理閉環。
 
 - 主要檔案與職責：
-  - `host/validators/content_classifier.py`：內容分類器（規則 + 關鍵詞 + 簡單相似度），回傳 `ClassificationResult`（包含 `classification`, `risk_score`, `content_types`, `blocking_reasons`, `confidence`）。
+  - `host/validators/content_classifier.py`：內容分類器（規則 + 關鍵詞 + 簡單相似度），回傳 `ClassificationResult`（包含 `classification`, `risk_score`, `content_types`, `sensitive_patterns`, `blocking_reasons`, `confidence`, `details`）。
   - `host/policies/policy_enforcer.py`：政策執行器，根據 context profile 的 policy（位於 `config.yaml` 的 `contexts.<id>.policy`）做允許/阻擋/修改決策，並回傳對應的 `audit_action` 與 `modified_text`（若需加入免責聲明）。
   - `host/validators/citation_verifier.py`：引用驗證工具（Module 3），可檢查主張與來源的對應性並回報 VERIFIED/UNVERIFIED/REJECTED，用於強化知識可追溯性。
   - `host/audits/governance_logger.py`：稽核擴充：新增 `CONTENT_CLASSIFICATION`、`CONTENT_POLICY_APPLIED`、`CONTENT_BLOCKED_BY_POLICY`、`CONTENT_MODIFIED_BY_POLICY` 等事件。
