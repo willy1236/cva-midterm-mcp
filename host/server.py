@@ -213,6 +213,10 @@ async def run_single_turn(
         # 4) 先加入本輪使用者訊息，再進入模型與工具循環。
         conversation.append({"role": "user", "content": user_message})
 
+        # 初始化最終回覆變數
+        final_text = ""
+        structured_sources: list[dict[str, Any]] = []
+
         try:
             while True:
                 circuit_breaker.check()
@@ -481,8 +485,12 @@ async def run_single_turn(
                 "context_id": context_id,
             }
 
+    # 返回經過政策應用與修改後的最終回覆
     return {
-        "assistant_response": structured_response,
+        "assistant_response": {
+            "answer": final_text,
+            "sources": structured_sources,
+        },
         "context_id": context_id,
     }
 

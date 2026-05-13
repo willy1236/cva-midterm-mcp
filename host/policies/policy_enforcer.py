@@ -100,6 +100,14 @@ async def enforce_policy(
         ContentClassification.RISKY,
     )
 
+    # 根據 requires_disclaimer 配置檢查是否需要添加免責聲明
+    requires_disclaimer = policy_rules.get("requires_disclaimer", [])
+    if isinstance(requires_disclaimer, list):
+        for disclaimer_type in requires_disclaimer:
+            if disclaimer_type in classification.content_types:
+                modification_needed = True
+                break
+
     modified_text = None
     audit_action = "CONTENT_POLICY_APPLIED"
 
